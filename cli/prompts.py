@@ -166,6 +166,12 @@ def select_research_depth(default=None) -> int:
         console.print("\n[red]No research depth selected. Exiting...[/red]")
         exit(1)
 
+    if choice not in (1, 3, 5):
+        console.print(
+            "[yellow]Research depth did not register. Using Shallow (1 round).[/yellow]"
+        )
+        return 1
+
     return choice
 
 

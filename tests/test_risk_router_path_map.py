@@ -70,6 +70,16 @@ def test_debate_router_return_always_routable(current_response):
 
 
 @pytest.mark.unit
+def test_string_round_counts_compare_as_ints():
+    # A blank menu answer used to reach the router as "" and crash with
+    # TypeError: '>=' not supported between instances of 'int' and 'str'.
+    logic = ConditionalLogic(max_debate_rounds="", max_risk_discuss_rounds="1")
+    assert logic.max_debate_rounds == 1
+    assert logic.should_continue_debate(_debate_state("Bull", count=2)) == "Research Manager"
+    assert logic.should_continue_risk_analysis(_state("Neutral", count=3)) == "Portfolio Manager"
+
+
+@pytest.mark.unit
 def test_debate_path_map_covers_full_router_range():
     logic = ConditionalLogic(max_debate_rounds=1)
     returns = {

@@ -29,6 +29,7 @@ from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.analyst_execution import (
     build_analyst_execution_plan,
 )
+from tradingagents.graph.conditional_logic import as_round_count
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.reporting import write_report_tree
 
@@ -76,7 +77,7 @@ def _build_run_config(selections: dict, checkpoint: bool | None) -> dict:
                 f"(set by {env_var}, so the research depth you chose does not apply to it)"
             )
         else:
-            config[key] = selections["research_depth"]
+            config[key] = as_round_count(selections["research_depth"])
     config["quick_think_llm"] = selections["quick_think_llm"]
     config["deep_think_llm"] = selections["deep_think_llm"]
     config["backend_url"] = selections["backend_url"]

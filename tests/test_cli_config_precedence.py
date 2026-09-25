@@ -26,6 +26,15 @@ SELECTIONS = {
 }
 
 
+def test_blank_research_depth_falls_back_to_one_round(monkeypatch):
+    for var in ("TRADINGAGENTS_MAX_DEBATE_ROUNDS", "TRADINGAGENTS_MAX_RISK_ROUNDS"):
+        monkeypatch.delenv(var, raising=False)
+    cfg = cli_run._build_run_config({**SELECTIONS, "research_depth": ""}, checkpoint=None)
+    assert cfg["max_debate_rounds"] == 1
+    assert cfg["max_risk_discuss_rounds"] == 1
+    assert isinstance(cfg["max_debate_rounds"], int)
+
+
 def test_research_depth_sets_both_rounds_without_env(monkeypatch):
     for var in ("TRADINGAGENTS_MAX_DEBATE_ROUNDS", "TRADINGAGENTS_MAX_RISK_ROUNDS"):
         monkeypatch.delenv(var, raising=False)

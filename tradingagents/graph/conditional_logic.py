@@ -1,13 +1,22 @@
 from tradingagents.agents.state import AgentState
 
 
+def as_round_count(value, fallback: int = 1) -> int:
+    """Round counts are compared as ints. A blank or non-numeric selection is fallback."""
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return count if count >= 1 else fallback
+
+
 class ConditionalLogic:
     """Handles conditional logic for determining graph flow."""
 
     def __init__(self, max_debate_rounds=1, max_risk_discuss_rounds=1):
         """Initialize with configuration parameters."""
-        self.max_debate_rounds = max_debate_rounds
-        self.max_risk_discuss_rounds = max_risk_discuss_rounds
+        self.max_debate_rounds = as_round_count(max_debate_rounds)
+        self.max_risk_discuss_rounds = as_round_count(max_risk_discuss_rounds)
 
     def should_continue_debate(self, state: AgentState) -> str:
         """Determine if debate should continue."""
