@@ -84,6 +84,17 @@ class TestRssParsing:
         assert "datacenter unit" in posts[0]["selftext"]
         assert posts[0]["subreddit"] == "stocks"
 
+    def test_urlopen_uses_a_ca_bundle(self):
+        captured = {}
+
+        def fake_urlopen(req, timeout=None, context=None):
+            captured["context"] = context
+            return _atom_resp()
+
+        with patch.object(reddit, "urlopen", fake_urlopen):
+            reddit._fetch_subreddit_rss("NVDA", "stocks", 5, 5.0)
+        assert captured["context"].cert_store_stats()["x509_ca"] > 0
+
     def test_malformed_xml_reports_unavailable(self):
         with patch.object(reddit, "urlopen", return_value=_resp(lambda: b"<<not xml>>")):
             assert reddit._fetch_subreddit_rss("NVDA", "stocks", 5, 5.0) is None

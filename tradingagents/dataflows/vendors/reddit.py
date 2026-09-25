@@ -30,6 +30,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from tradingagents.dataflows.date_window import coverage_gap, in_window
+from tradingagents.dataflows.net import ssl_context
 from tradingagents.dataflows.symbols import crypto_base
 
 logger = logging.getLogger(__name__)
@@ -189,7 +190,7 @@ def _fetch_subreddit_rss(
     url = _RSS.format(sub=sub, qs=_search_qs(ticker, limit))
     req = Request(url, headers={"User-Agent": _UA})
     try:
-        with urlopen(req, timeout=timeout) as resp:
+        with urlopen(req, timeout=timeout, context=ssl_context()) as resp:
             root = ET.fromstring(_read_capped(resp))
     except HTTPError as exc:
         if exc.code == 429 and _retry:

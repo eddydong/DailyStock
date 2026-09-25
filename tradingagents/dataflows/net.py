@@ -1,6 +1,20 @@
 """HTTP helpers shared by the vendors."""
 
+import ssl
+
+import certifi
 import requests
+
+
+def ssl_context() -> ssl.SSLContext:
+    """CA bundle for ``urllib``.
+
+    ``requests`` trusts certifi on its own. ``urllib`` uses the interpreter's
+    default store, which on some macOS Python installs has no issuers, so
+    StockTwits and Reddit fail with ``CERTIFICATE_VERIFY_FAILED`` while Yahoo
+    (a different HTTP stack) still works.
+    """
+    return ssl.create_default_context(cafile=certifi.where())
 
 
 def get_scrubbed(url: str, *, params: dict, timeout: float, secret: str, passthrough=()):
