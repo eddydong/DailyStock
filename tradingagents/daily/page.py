@@ -23,10 +23,7 @@ _CSS = """
   --mark: #c4a15a;
 }
 * { box-sizing: border-box; }
-html { background: var(--ink); scroll-behavior: smooth; }
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-}
+html { background: var(--ink); }
 body {
   margin: 0;
   color: var(--text);
@@ -103,14 +100,14 @@ body {
   text-decoration: none;
   font-weight: 600;
   font-size: 1.02rem;
-  padding: 0.38rem 0;
-  color: var(--sheet);
+  padding: 0.42rem 0 0.42rem 0.8rem;
+  border-left: 2px solid transparent;
+  color: #d5ddd8;
 }
-.toc a:hover, .toc a:focus-visible { color: var(--mark); }
+.toc a:hover, .toc a:focus-visible { color: var(--sheet); }
 .toc a.is-active {
-  color: var(--mark);
-  box-shadow: inset 3px 0 0 var(--mark);
-  padding-left: 0.7rem;
+  color: var(--sheet);
+  border-left-color: var(--mark);
 }
 .reading {
   min-width: 0;
@@ -237,35 +234,45 @@ def render_page(days: list[dict]) -> str:
 (() => {{
   const links = [...document.querySelectorAll(".toc a[href^='#']")];
   const sections = links.map((a) => document.getElementById(a.getAttribute("href").slice(1))).filter(Boolean);
-  const mark = (id) => {{
-    let current = null;
-    for (const a of links) {{
-      const on = a.getAttribute("href") === "#" + id;
-      a.classList.toggle("is-active", on);
-      if (on) current = a;
-    }}
-    if (!current) return;
-    const nav = current.closest(".toc");
-    const navBox = nav.getBoundingClientRect();
-    const linkBox = current.getBoundingClientRect();
-    if (linkBox.top < navBox.top || linkBox.bottom > navBox.bottom) {{
-      nav.scrollTo({{ top: nav.scrollTop + (linkBox.top - navBox.top) - 16, behavior: "smooth" }});
-    }}
-  }};
   if (!sections.length) return;
-  const seen = new Map();
-  const pick = () => {{
-    let best = null;
-    for (const [id, ratio] of seen) if (!best || ratio > best.ratio) best = {{ id, ratio }};
-    if (best && best.ratio > 0) mark(best.id);
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let locked = false;
+  let shown = "";
+  const mark = (id) => {{
+    if (id === shown) return;
+    shown = id;
+    for (const a of links) a.classList.toggle("is-active", a.getAttribute("href") === "#" + id);
   }};
-  const watch = new IntersectionObserver((entries) => {{
-    for (const entry of entries) seen.set(entry.target.id, entry.isIntersecting ? entry.intersectionRatio : 0);
-    pick();
-  }}, {{ rootMargin: "-12% 0px -55% 0px", threshold: [0, 0.2, 0.45, 0.7] }});
-  sections.forEach((section) => watch.observe(section));
-  links.forEach((a) => a.addEventListener("click", () => mark(a.getAttribute("href").slice(1))));
-  mark(sections[0].id);
+  const readingLine = () => {{
+    const line = window.scrollY + 110;
+    let id = sections[0].id;
+    for (const section of sections) {{
+      if (section.getBoundingClientRect().top + window.scrollY <= line) id = section.id;
+    }}
+    return id;
+  }};
+  let frame = 0;
+  const onScroll = () => {{
+    if (locked || frame) return;
+    frame = requestAnimationFrame(() => {{
+      frame = 0;
+      mark(readingLine());
+    }});
+  }};
+  links.forEach((a) => a.addEventListener("click", (event) => {{
+    event.preventDefault();
+    const id = a.getAttribute("href").slice(1);
+    const section = document.getElementById(id);
+    if (!section) return;
+    mark(id);
+    locked = true;
+    section.scrollIntoView({{ behavior: reduce ? "auto" : "smooth", block: "start" }});
+    const release = () => {{ locked = false; mark(readingLine()); }};
+    window.addEventListener("scrollend", release, {{ once: true }});
+    setTimeout(release, reduce ? 50 : 900);
+  }}));
+  window.addEventListener("scroll", onScroll, {{ passive: true }});
+  mark(readingLine());
 }})();
 </script>
 </body>
