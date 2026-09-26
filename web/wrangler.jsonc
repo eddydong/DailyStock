@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sp500-daily",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-09-25",
+  "workers_dev": true,
+  // stock.eddykd.com is a hostname on the eddykd.com zone. custom_domain
+  // creates a proxied DNS record and a certificate. It does not touch the apex.
+  "routes": [
+    {
+      "pattern": "stock.eddykd.com",
+      "custom_domain": true
+    }
+  ],
+  // Namespace id is filled by `wrangler kv namespace create PAGE`.
+  // One key, index.html, holds the whole page. Daily writes stay far
+  // under the free KV write allowance (1,000 writes a day).
+  "kv_namespaces": [
+    {
+      "binding": "PAGE",
+      "id": "0359883cb9f04b8db3467f94fa45858d"
+    }
+  ]
+}

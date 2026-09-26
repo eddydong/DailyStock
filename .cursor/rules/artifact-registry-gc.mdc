@@ -1,0 +1,16 @@
+---
+description: After every Google Cloud deploy, delete unused Artifact Registry images so storage stays inside the free 0.5 GB.
+alwaysApply: true
+---
+
+# Artifact Registry garbage collection
+
+The free Artifact Registry allowance is **0.5 GB for the whole billing account**, then about $0.10 per GB per month. Old untagged images from earlier deploys are what crosses that line.
+
+After every deploy that pushes a container (Cloud Run, Cloud Build, `gcloud run jobs deploy --source`, `gcloud builds submit`):
+
+1. Run `scripts/gc_artifact_registry.sh` from this repo. It covers every project on the same billing account, not only the project just deployed.
+2. The script deletes untagged images whose digest is not still referenced by a Cloud Run job or service. It keeps `latest` and any digest a live revision pins.
+3. Each Docker repository must have a cleanup policy that deletes untagged images older than 1 day. The script sets that policy if it is missing. Leave vulnerability scanning disabled.
+
+Do not deploy a second copy of an image "just in case." One tag per app. Do not enable `containerscanning.googleapis.com`.
