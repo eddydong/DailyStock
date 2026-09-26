@@ -23,7 +23,7 @@ _CSS = """
   --mark: #c4a15a;
 }
 * { box-sizing: border-box; }
-html { background: var(--ink); }
+html, body { background: var(--sheet); }
 body {
   margin: 0;
   color: var(--text);
@@ -80,8 +80,6 @@ body {
   position: sticky;
   top: 4.4rem;
   align-self: start;
-  max-height: calc(100vh - 4.4rem);
-  overflow: auto;
   padding: 1.4rem 1.1rem 2rem 1.5rem;
   color: var(--sheet);
 }
@@ -158,6 +156,20 @@ th { font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; colo
   margin-top: 2.5rem;
   color: var(--muted);
   font-size: 0.85rem;
+}
+code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.92em;
+  background: #ece8df;
+  padding: 0.05rem 0.28rem;
+  border-radius: 3px;
+}
+hr { border: 0; border-top: 1px solid var(--line); margin: 1.1rem 0; }
+blockquote {
+  margin: 0.6rem 0;
+  padding-left: 0.9rem;
+  border-left: 3px solid var(--mark);
+  color: var(--muted);
 }
 a { color: inherit; }
 @media (max-width: 52rem) {
@@ -237,41 +249,18 @@ def render_page(days: list[dict]) -> str:
   const sections = links.map((a) => document.getElementById(a.getAttribute("href").slice(1))).filter(Boolean);
   if (!sections.length) return;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let locked = false;
-  let shown = "";
-  let wait = 0;
   const mark = (id) => {{
-    if (!id || id === shown) return;
-    shown = id;
     for (const a of links) a.classList.toggle("is-active", a.getAttribute("href") === "#" + id);
-  }};
-  const readingLine = () => {{
-    const line = window.scrollY + 120;
-    let id = sections[0].id;
-    for (const section of sections) {{
-      if (section.getBoundingClientRect().top + window.scrollY <= line) id = section.id;
-    }}
-    return id;
-  }};
-  const settle = () => {{
-    clearTimeout(wait);
-    wait = setTimeout(() => {{ if (!locked) mark(readingLine()); }}, 160);
   }};
   links.forEach((a) => a.addEventListener("click", (event) => {{
     event.preventDefault();
     const id = a.getAttribute("href").slice(1);
     const section = document.getElementById(id);
     if (!section) return;
-    clearTimeout(wait);
-    locked = true;
     mark(id);
     section.scrollIntoView({{ behavior: reduce ? "auto" : "smooth", block: "start" }});
-    const release = () => {{ locked = false; }};
-    window.addEventListener("scrollend", release, {{ once: true }});
-    setTimeout(release, reduce ? 40 : 800);
   }}));
-  window.addEventListener("scroll", settle, {{ passive: true }});
-  mark(readingLine());
+  mark(sections[0].id);
 }})();
 </script>
 </body>
@@ -374,34 +363,90 @@ def _note() -> str:
     )
 
 
+_HEADING = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
+_BULLET = re.compile(r"^[-*+]\s+(.*\S)\s*$")
+_NUMBER = re.compile(r"^\d+[.)]\s+(.*\S)\s*$")
+_RULE = re.compile(r"^([-*_])\1{2,}\s*$")
+
+
 def _markdown(text: str, prefix: str, used: set[str]) -> tuple[str, list[tuple[str, str]]]:
-    blocks = re.split(r"\n\s*\n", text.strip())
-    parts = []
+    """Render the agents' Markdown. A line is classified on its own, so a
+    heading does not have to sit in a paragraph by itself."""
+    lines = text.replace("\r\n", "\n").split("\n")
+    parts: list[str] = []
     subs: list[tuple[str, str]] = []
-    for block in blocks:
-        lines = [line for line in block.splitlines() if line.strip()]
-        if not lines:
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        stripped = raw.strip()
+        if not stripped:
+            i += 1
             continue
-        if all(line.lstrip().startswith("#") for line in lines):
-            for line in lines:
-                marks = len(line) - len(line.lstrip("#"))
-                # Section titles are already h2. Report headings sit under them.
-                level = min(max(marks + 1, 3), 4)
-                plain = line.lstrip("#").strip()
-                hid = _unique(f"{prefix}-{_slug(plain)}", used)
-                if level == 3:
-                    subs.append((hid, plain))
-                parts.append(f'<h{level} id="{hid}">{_inline(plain)}</h{level}>')
+        heading = _HEADING.match(stripped)
+        if heading:
+            marks = len(heading.group(1))
+            level = min(max(marks + 1, 3), 4)
+            plain = heading.group(2)
+            hid = _unique(f"{prefix}-{_slug(plain)}", used)
+            if level == 3:
+                subs.append((hid, plain))
+            parts.append(f'<h{level} id="{hid}">{_inline(plain)}</h{level}>')
+            i += 1
             continue
-        if all(line.strip()[:2] in ("- ", "* ") for line in lines):
-            items = "".join(f"<li>{_inline(line.strip()[2:])}</li>" for line in lines)
-            parts.append(f"<ul>{items}</ul>")
+        if _RULE.match(stripped):
+            parts.append("<hr>")
+            i += 1
             continue
-        if _is_table(lines):
-            parts.append(_table(lines))
+        if stripped.startswith("|"):
+            table: list[str] = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                table.append(lines[i])
+                i += 1
+            parts.append(_table(table))
             continue
-        parts.append("<p>" + _inline(block).replace("\n", "<br>") + "</p>")
+        bullet = _BULLET.match(stripped)
+        number = _NUMBER.match(stripped)
+        if bullet or number:
+            items: list[str] = []
+            ordered = bool(number) and not bullet
+            while i < len(lines):
+                item = lines[i].strip()
+                if not item:
+                    i += 1
+                    break
+                matched = (_NUMBER if ordered else _BULLET).match(item)
+                if not matched:
+                    break
+                items.append(f"<li>{_inline(matched.group(1))}</li>")
+                i += 1
+            tag = "ol" if ordered else "ul"
+            parts.append(f"<{tag}>{''.join(items)}</{tag}>")
+            continue
+        if stripped.startswith(">"):
+            quotes: list[str] = []
+            while i < len(lines) and lines[i].strip().startswith(">"):
+                quotes.append(lines[i].strip().lstrip(">").strip())
+                i += 1
+            parts.append("<blockquote><p>" + "<br>".join(_inline(q) for q in quotes) + "</p></blockquote>")
+            continue
+        para: list[str] = []
+        while i < len(lines) and lines[i].strip() and not _starts_block(lines[i]):
+            para.append(lines[i].strip())
+            i += 1
+        parts.append("<p>" + _inline("\n".join(para)).replace("\n", "<br>") + "</p>")
     return "\n".join(parts), subs
+
+
+def _starts_block(line: str) -> bool:
+    stripped = line.strip()
+    return bool(
+        _HEADING.match(stripped)
+        or _RULE.match(stripped)
+        or stripped.startswith("|")
+        or _BULLET.match(stripped)
+        or _NUMBER.match(stripped)
+        or stripped.startswith(">")
+    )
 
 
 def _is_table(lines: list[str]) -> bool:
@@ -425,5 +470,22 @@ def _table(lines: list[str]) -> str:
 
 
 def _inline(text: str) -> str:
-    escaped = html.escape(text or "")
-    return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+    """Bold, italics, and code spans. Code is set aside first so a bold
+    phrase can wrap a code span, and marks inside code stay literal."""
+    if not text:
+        return ""
+    codes: list[str] = []
+
+    def _stash(match: re.Match[str]) -> str:
+        codes.append(match.group(1))
+        return f"\x00{len(codes) - 1}\x00"
+
+    protected = re.sub(r"`([^`]+)`", _stash, text)
+    escaped = html.escape(protected)
+    escaped = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped, flags=re.S)
+    escaped = re.sub(r"(?<!\*)\*(?!\s)(.+?)(?<!\s)\*(?!\*)", r"<em>\1</em>", escaped)
+
+    def _restore(match: re.Match[str]) -> str:
+        return "<code>" + html.escape(codes[int(match.group(1))]) + "</code>"
+
+    return re.sub(r"\x00(\d+)\x00", _restore, escaped)

@@ -127,6 +127,26 @@ def test_archive_round_trip(tmp_path):
     assert "Sit tight." in page.read_text(encoding="utf-8")
 
 
+def test_markdown_marks_are_not_left_as_text():
+    page = render_page([{
+        "trade_date": "2026-09-25",
+        "rating": "Hold",
+        "summary": "Sit tight.",
+        "market_report": "# Title\n**Date:** today\n\n`close`\n\n- one\n- two",
+    }])
+    assert "# Title" not in page
+    assert "**Date:**" not in page
+    assert "<code>close</code>" in page
+    wrapped = render_page([{
+        "trade_date": "2026-09-25",
+        "rating": "Hold",
+        "summary": "Sit tight.",
+        "market_report": "See **the `close` price** today.",
+    }])
+    assert "<strong>the <code>close</code> price</strong>" in wrapped
+    assert "<li>one</li>" in page
+
+
 def test_markdown_table_is_a_table():
     html = render_page([{
         "trade_date": "2026-09-25",
