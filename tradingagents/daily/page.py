@@ -14,86 +14,103 @@ import re
 # Rating colors are the only signal color; everything else stays quiet.
 _CSS = """
 :root {
-  --paper: #dfe7ee;
-  --card: #f6f8fa;
-  --ink: #142033;
-  --muted: #5c6b7c;
-  --rule: #8a6a2f;
-  --line: #c5d0da;
+  --ink: #121a16;
+  --sheet: #f7f6f1;
+  --rail: #1c2822;
+  --text: #1a2420;
+  --muted: #5d6b64;
+  --line: #d9d4c8;
+  --mark: #c4a15a;
 }
 * { box-sizing: border-box; }
-html { background: var(--paper); }
+html { background: var(--ink); }
 body {
   margin: 0;
-  color: var(--ink);
-  font-family: "Source Sans 3", "Source Sans Pro", sans-serif;
-  font-size: 1.2rem;
-  line-height: 1.55;
+  color: var(--text);
+  font-family: "Figtree", "Source Sans 3", sans-serif;
+  font-size: 1.125rem;
+  line-height: 1.6;
 }
 .mast {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 3;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1.25rem;
+  gap: 1.5rem;
+  padding: 0.85rem 1.75rem;
   background: var(--ink);
-  color: var(--card);
+  color: var(--sheet);
+}
+.ticker {
+  font-family: "Syne", "Figtree", sans-serif;
+  font-weight: 700;
+  font-size: 1.85rem;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  margin: 0;
 }
 .kicker {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.78rem;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #b7c3cf;
-  margin: 0;
+  color: #b7c4bb;
+  margin: 0.2rem 0 0;
 }
 .stamp {
-  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-family: "Syne", "Figtree", sans-serif;
   font-weight: 700;
-  font-size: 2.4rem;
+  font-size: 1.35rem;
+  letter-spacing: 0.04em;
   line-height: 1;
-  letter-spacing: 0.02em;
   margin: 0;
+  padding: 0.45rem 0.85rem;
+  color: var(--ink);
 }
 .layout {
   display: grid;
-  grid-template-columns: 13rem minmax(0, 1fr);
-  gap: 2.5rem;
+  grid-template-columns: 15.5rem minmax(0, 1fr);
   align-items: start;
-  padding: 1.75rem 2.5rem 4rem;
+  min-height: calc(100vh - 4.2rem);
+  background: var(--rail);
 }
 .toc {
   position: sticky;
-  top: 4.2rem;
+  top: 4.4rem;
   align-self: start;
-  max-height: calc(100vh - 5rem);
+  max-height: calc(100vh - 4.4rem);
   overflow: auto;
-  padding-right: 0.4rem;
+  padding: 1.4rem 1.1rem 2rem 1.5rem;
+  color: var(--sheet);
 }
 .toc p {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--muted);
-  margin: 0 0 0.4rem;
+  color: #8ea096;
+  margin: 0 0 0.7rem;
 }
 .toc ol { list-style: none; margin: 0; padding: 0; }
-.toc li { margin: 0.15rem 0; }
+.toc li { margin: 0; }
 .toc a {
   display: block;
   text-decoration: none;
-  padding: 0.15rem 0;
-  border-bottom: 1px solid transparent;
+  font-weight: 600;
+  font-size: 1.02rem;
+  padding: 0.38rem 0;
+  color: var(--sheet);
 }
-.toc a:hover, .toc a:focus-visible { border-bottom-color: var(--rule); }
-.toc .sub { padding-left: 0.75rem; }
-.toc .sub a { font-size: 0.92rem; color: var(--muted); }
-.reading { min-width: 0; }
-.summary { font-size: 1.35rem; margin: 0 0 0.4rem; max-width: none; }
+.toc a:hover, .toc a:focus-visible { color: var(--mark); }
+.reading {
+  min-width: 0;
+  background: var(--sheet);
+  padding: 1.6rem 2.4rem 4rem;
+  min-height: calc(100vh - 4.4rem);
+}
+.summary { font-size: 1.28rem; line-height: 1.45; margin: 0 0 0.35rem; }
 .meta {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.78rem;
@@ -102,12 +119,14 @@ body {
 section { scroll-margin-top: 4.6rem; }
 section { margin-top: 2rem; }
 h2 {
-  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
-  font-size: 1.6rem;
-  font-weight: 600;
-  margin: 0 0 0.6rem;
-  border-bottom: 1px solid var(--line);
-  scroll-margin-top: 4.6rem;
+  font-family: "Syne", "Figtree", sans-serif;
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.7rem;
+  padding-top: 0.2rem;
+  border-top: 3px solid var(--mark);
+  scroll-margin-top: 5rem;
 }
 h3 { font-size: 1.2rem; margin: 1.1rem 0 0.3rem; scroll-margin-top: 4.6rem; }
 p { margin: 0.4rem 0; }
@@ -136,16 +155,16 @@ th { font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; colo
 }
 a { color: inherit; }
 @media (max-width: 52rem) {
-  .layout { grid-template-columns: 1fr; padding-top: 0.75rem; }
+  .layout { grid-template-columns: 1fr; }
   .toc {
     position: sticky;
-    top: 3.6rem;
+    top: 4.2rem;
     max-height: none;
-    background: var(--paper);
-    padding: 0.4rem 0 0.6rem;
+    padding: 0.6rem 1rem;
   }
-  .toc ol { display: flex; gap: 0.8rem; overflow-x: auto; }
-  .toc .sub { display: none; }
+  .toc ol { display: flex; gap: 1rem; overflow-x: auto; }
+  .toc a { white-space: nowrap; }
+  .reading { padding: 1.2rem 1rem 3rem; }
   .tape li { grid-template-columns: 1fr; gap: 0.1rem; }
 }
 """
@@ -201,7 +220,7 @@ def render_page(days: list[dict]) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;700&family=Source+Sans+3:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Syne:wght@700&display=swap">
 <style>{_CSS}</style>
 </head>
 <body>
@@ -232,8 +251,11 @@ def _layout(day: dict, prior: list[dict]) -> str:
         toc.append((sid, "Earlier sessions", []))
     return f"""
 <header class="mast">
-  <p class="kicker">{html.escape(day.get("ticker") or "")} · session {html.escape(day.get("trade_date") or "")}</p>
-  <p class="stamp" style="color:{color}">{html.escape(rating)}</p>
+  <div>
+    <p class="ticker">{html.escape(day.get("ticker") or "")}</p>
+    <p class="kicker">Session {html.escape(day.get("trade_date") or "")}</p>
+  </div>
+  <p class="stamp" style="background:{color}">{html.escape(rating)}</p>
 </header>
 <div class="layout">
   <nav class="toc" aria-label="Contents">
