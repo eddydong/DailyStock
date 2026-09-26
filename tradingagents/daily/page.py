@@ -27,8 +27,8 @@ body {
   margin: 0;
   color: var(--ink);
   font-family: "Source Sans 3", "Source Sans Pro", sans-serif;
-  font-size: 1.05rem;
-  line-height: 1.5;
+  font-size: 1.2rem;
+  line-height: 1.55;
 }
 .mast {
   position: sticky;
@@ -60,10 +60,10 @@ body {
 }
 .layout {
   display: grid;
-  grid-template-columns: 14rem minmax(0, 46rem);
-  gap: 1.5rem;
-  justify-content: center;
-  padding: 1.25rem 1.25rem 4rem;
+  grid-template-columns: 13rem minmax(0, 1fr);
+  gap: 2.5rem;
+  align-items: start;
+  padding: 1.75rem 2.5rem 4rem;
 }
 .toc {
   position: sticky;
@@ -93,7 +93,7 @@ body {
 .toc .sub { padding-left: 0.75rem; }
 .toc .sub a { font-size: 0.92rem; color: var(--muted); }
 .reading { min-width: 0; }
-.summary { font-size: 1.15rem; margin: 0 0 0.4rem; }
+.summary { font-size: 1.35rem; margin: 0 0 0.4rem; max-width: none; }
 .meta {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.78rem;
@@ -109,7 +109,7 @@ h2 {
   border-bottom: 1px solid var(--line);
   scroll-margin-top: 4.6rem;
 }
-h3 { font-size: 1.05rem; margin: 1.1rem 0 0.3rem; scroll-margin-top: 4.6rem; }
+h3 { font-size: 1.2rem; margin: 1.1rem 0 0.3rem; scroll-margin-top: 4.6rem; }
 p { margin: 0.4rem 0; }
 ul { margin: 0.4rem 0; padding-left: 1.2rem; }
 table { width: 100%; border-collapse: collapse; font-size: 0.92rem; margin: 0.6rem 0 1rem; }
