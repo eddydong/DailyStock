@@ -249,18 +249,49 @@ def render_page(days: list[dict]) -> str:
   const sections = links.map((a) => document.getElementById(a.getAttribute("href").slice(1))).filter(Boolean);
   if (!sections.length) return;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const mast = document.querySelector(".mast");
+  let shown = "";
+  let locked = null;
+  let frame = 0;
   const mark = (id) => {{
+    if (!id || id === shown) return;
+    shown = id;
     for (const a of links) a.classList.toggle("is-active", a.getAttribute("href") === "#" + id);
   }};
+  const currentId = () => {{
+    const doc = document.documentElement;
+    if (window.innerHeight + window.scrollY >= doc.scrollHeight - 2) return sections[sections.length - 1].id;
+    const line = (mast ? mast.getBoundingClientRect().height : 0) + 48;
+    let active = sections[0].id;
+    for (const section of sections) {{
+      if (section.getBoundingClientRect().top <= line) active = section.id;
+    }}
+    return active;
+  }};
+  const sync = () => mark(locked || currentId());
+  window.addEventListener("scroll", () => {{
+    if (frame) return;
+    frame = requestAnimationFrame(() => {{
+      frame = 0;
+      sync();
+    }});
+  }}, {{ passive: true }});
+  window.addEventListener("scrollend", () => {{
+    locked = null;
+    sync();
+  }});
+  window.addEventListener("wheel", () => {{ locked = null; }}, {{ passive: true }});
+  window.addEventListener("touchstart", () => {{ locked = null; }}, {{ passive: true }});
   links.forEach((a) => a.addEventListener("click", (event) => {{
     event.preventDefault();
     const id = a.getAttribute("href").slice(1);
     const section = document.getElementById(id);
     if (!section) return;
+    locked = id;
     mark(id);
     section.scrollIntoView({{ behavior: reduce ? "auto" : "smooth", block: "start" }});
   }}));
-  mark(sections[0].id);
+  mark(currentId());
 }})();
 </script>
 </body>

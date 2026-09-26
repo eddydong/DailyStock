@@ -116,6 +116,8 @@ def test_page_shows_the_latest_report_and_only_a_line_for_earlier_days():
     assert 'href="#market"' in html
     assert 'id="market"' in html
     assert "is-active" in html
+    assert 'addEventListener("scroll"' in html
+    assert "getBoundingClientRect" in html
     assert 'behavior: reduce ? "auto" : "smooth"' in html
 
 
