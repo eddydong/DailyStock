@@ -97,7 +97,6 @@ def load_bigquery(project: str, dataset: str = "sp500_daily", table: str = "deci
         f"""
         SELECT payload
         FROM `{project}.{dataset}.{table}`
-        WHERE ticker = 'SPY'
         ORDER BY trade_date
         """,
     )

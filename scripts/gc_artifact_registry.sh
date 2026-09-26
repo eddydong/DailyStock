@@ -41,19 +41,23 @@ for repo in data:
       )"
       host="${location}-docker.pkg.dev/${proj}/${repo_name}"
       gcloud artifacts docker images list "$host" --include-tags --format=json --project="$proj" 2>/dev/null \
-        | LIVE_IMAGES="$live" python3 -c 'import json,os,sys
+        | LIVE_IMAGES="$live" IMAGE_HOST="$host" python3 -c 'import json,os,sys
 raw=sys.stdin.read()
 start=raw.find("[")
 data=json.loads(raw[start:]) if start>=0 else []
 live=[line for line in os.environ.get("LIVE_IMAGES","").splitlines() if line.strip()]
+host=os.environ.get("IMAGE_HOST","").rstrip("/")
 for item in data:
     if item.get("tags"):
         continue
     version=item.get("version") or ""
+    package=item.get("package") or ""
+    if version.startswith("sha256:"):
+        version=(package or host) + "@" + version
     digest=version.split("@")[-1]
     if any(digest and digest in ref for ref in live):
         continue
-    if version:
+    if "@sha256:" in version:
         print(version)' \
         | while read -r version; do
           echo "Deleting ${version}"

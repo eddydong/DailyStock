@@ -28,7 +28,7 @@ from tradingagents.daily.publish import (
     upsert_bigquery,
     write_page,
 )
-from tradingagents.daily.sp500 import coming_session, run_session
+from tradingagents.daily.sp500 import TICKER, coming_session, run_session
 
 
 def main() -> None:
@@ -51,7 +51,7 @@ def main() -> None:
         if trade_date is None:
             print("NYSE is closed today. Skipping.", flush=True)
             return
-    print(f"Starting SPY session for {trade_date}", flush=True)
+    print(f"Starting {TICKER} session for {trade_date}", flush=True)
     document = run_session(trade_date)
     path = save_local(document)
     print(f"Saved {path}", flush=True)
