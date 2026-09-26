@@ -23,7 +23,10 @@ _CSS = """
   --mark: #c4a15a;
 }
 * { box-sizing: border-box; }
-html { background: var(--ink); }
+html { background: var(--ink); scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
 body {
   margin: 0;
   color: var(--text);
@@ -104,6 +107,11 @@ body {
   color: var(--sheet);
 }
 .toc a:hover, .toc a:focus-visible { color: var(--mark); }
+.toc a.is-active {
+  color: var(--mark);
+  box-shadow: inset 3px 0 0 var(--mark);
+  padding-left: 0.7rem;
+}
 .reading {
   min-width: 0;
   background: var(--sheet);
@@ -225,6 +233,41 @@ def render_page(days: list[dict]) -> str:
 </head>
 <body>
 {body}
+<script>
+(() => {{
+  const links = [...document.querySelectorAll(".toc a[href^='#']")];
+  const sections = links.map((a) => document.getElementById(a.getAttribute("href").slice(1))).filter(Boolean);
+  const mark = (id) => {{
+    let current = null;
+    for (const a of links) {{
+      const on = a.getAttribute("href") === "#" + id;
+      a.classList.toggle("is-active", on);
+      if (on) current = a;
+    }}
+    if (!current) return;
+    const nav = current.closest(".toc");
+    const navBox = nav.getBoundingClientRect();
+    const linkBox = current.getBoundingClientRect();
+    if (linkBox.top < navBox.top || linkBox.bottom > navBox.bottom) {{
+      nav.scrollTo({{ top: nav.scrollTop + (linkBox.top - navBox.top) - 16, behavior: "smooth" }});
+    }}
+  }};
+  if (!sections.length) return;
+  const seen = new Map();
+  const pick = () => {{
+    let best = null;
+    for (const [id, ratio] of seen) if (!best || ratio > best.ratio) best = {{ id, ratio }};
+    if (best && best.ratio > 0) mark(best.id);
+  }};
+  const watch = new IntersectionObserver((entries) => {{
+    for (const entry of entries) seen.set(entry.target.id, entry.isIntersecting ? entry.intersectionRatio : 0);
+    pick();
+  }}, {{ rootMargin: "-12% 0px -55% 0px", threshold: [0, 0.2, 0.45, 0.7] }});
+  sections.forEach((section) => watch.observe(section));
+  links.forEach((a) => a.addEventListener("click", () => mark(a.getAttribute("href").slice(1))));
+  mark(sections[0].id);
+}})();
+</script>
 </body>
 </html>
 """

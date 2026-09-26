@@ -115,6 +115,8 @@ def test_page_shows_the_latest_report_and_only_a_line_for_earlier_days():
     assert ">Hold<" in html
     assert 'href="#market"' in html
     assert 'id="market"' in html
+    assert "is-active" in html
+    assert "scroll-behavior: smooth" in html
 
 
 def test_archive_round_trip(tmp_path):
