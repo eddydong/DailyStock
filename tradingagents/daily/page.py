@@ -100,14 +100,15 @@ body {
   text-decoration: none;
   font-weight: 600;
   font-size: 1.02rem;
-  padding: 0.42rem 0 0.42rem 0.8rem;
-  border-left: 2px solid transparent;
+  margin: 0.12rem 0;
+  padding: 0.38rem 0.65rem;
+  border-radius: 6px;
   color: #d5ddd8;
 }
 .toc a:hover, .toc a:focus-visible { color: var(--sheet); }
 .toc a.is-active {
   color: var(--sheet);
-  border-left-color: var(--mark);
+  background: rgba(196, 161, 90, 0.22);
 }
 .reading {
   min-width: 0;
@@ -238,40 +239,38 @@ def render_page(days: list[dict]) -> str:
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let locked = false;
   let shown = "";
+  let wait = 0;
   const mark = (id) => {{
-    if (id === shown) return;
+    if (!id || id === shown) return;
     shown = id;
     for (const a of links) a.classList.toggle("is-active", a.getAttribute("href") === "#" + id);
   }};
   const readingLine = () => {{
-    const line = window.scrollY + 110;
+    const line = window.scrollY + 120;
     let id = sections[0].id;
     for (const section of sections) {{
       if (section.getBoundingClientRect().top + window.scrollY <= line) id = section.id;
     }}
     return id;
   }};
-  let frame = 0;
-  const onScroll = () => {{
-    if (locked || frame) return;
-    frame = requestAnimationFrame(() => {{
-      frame = 0;
-      mark(readingLine());
-    }});
+  const settle = () => {{
+    clearTimeout(wait);
+    wait = setTimeout(() => {{ if (!locked) mark(readingLine()); }}, 160);
   }};
   links.forEach((a) => a.addEventListener("click", (event) => {{
     event.preventDefault();
     const id = a.getAttribute("href").slice(1);
     const section = document.getElementById(id);
     if (!section) return;
-    mark(id);
+    clearTimeout(wait);
     locked = true;
+    mark(id);
     section.scrollIntoView({{ behavior: reduce ? "auto" : "smooth", block: "start" }});
-    const release = () => {{ locked = false; mark(readingLine()); }};
+    const release = () => {{ locked = false; }};
     window.addEventListener("scrollend", release, {{ once: true }});
-    setTimeout(release, reduce ? 50 : 900);
+    setTimeout(release, reduce ? 40 : 800);
   }}));
-  window.addEventListener("scroll", onScroll, {{ passive: true }});
+  window.addEventListener("scroll", settle, {{ passive: true }});
   mark(readingLine());
 }})();
 </script>
