@@ -30,54 +30,76 @@ body {
   font-size: 1.05rem;
   line-height: 1.5;
 }
-.wrap { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
-.ticket {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-left: 0.55rem solid var(--rule);
-  padding: 1.5rem 1.4rem 1.6rem 1.5rem;
-  position: relative;
-}
-.ticket::before {
-  content: "";
-  position: absolute;
-  left: 0.35rem;
-  top: 0.8rem;
-  bottom: 0.8rem;
-  width: 0.45rem;
-  background: radial-gradient(circle, var(--paper) 0.11rem, transparent 0.13rem);
-  background-size: 0.45rem 0.7rem;
-  background-repeat: repeat-y;
+.mast {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--ink);
+  color: var(--card);
 }
 .kicker {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.78rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: #b7c3cf;
   margin: 0;
-}
-h1 {
-  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
-  font-weight: 600;
-  font-size: 2.4rem;
-  letter-spacing: 0.01em;
-  margin: 0.2rem 0 0.6rem;
 }
 .stamp {
   font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
   font-weight: 700;
-  font-size: 4.2rem;
-  line-height: 0.9;
+  font-size: 2.4rem;
+  line-height: 1;
   letter-spacing: 0.02em;
-  margin: 0.4rem 0 0.8rem;
+  margin: 0;
 }
+.layout {
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 46rem);
+  gap: 1.5rem;
+  justify-content: center;
+  padding: 1.25rem 1.25rem 4rem;
+}
+.toc {
+  position: sticky;
+  top: 4.2rem;
+  align-self: start;
+  max-height: calc(100vh - 5rem);
+  overflow: auto;
+  padding-right: 0.4rem;
+}
+.toc p {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 0.4rem;
+}
+.toc ol { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 0.15rem 0; }
+.toc a {
+  display: block;
+  text-decoration: none;
+  padding: 0.15rem 0;
+  border-bottom: 1px solid transparent;
+}
+.toc a:hover, .toc a:focus-visible { border-bottom-color: var(--rule); }
+.toc .sub { padding-left: 0.75rem; }
+.toc .sub a { font-size: 0.92rem; color: var(--muted); }
+.reading { min-width: 0; }
 .summary { font-size: 1.15rem; margin: 0 0 0.4rem; }
 .meta {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.78rem;
   color: var(--muted);
 }
+section { scroll-margin-top: 4.6rem; }
 section { margin-top: 2rem; }
 h2 {
   font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
@@ -85,8 +107,9 @@ h2 {
   font-weight: 600;
   margin: 0 0 0.6rem;
   border-bottom: 1px solid var(--line);
+  scroll-margin-top: 4.6rem;
 }
-h3 { font-size: 1.05rem; margin: 1.1rem 0 0.3rem; }
+h3 { font-size: 1.05rem; margin: 1.1rem 0 0.3rem; scroll-margin-top: 4.6rem; }
 p { margin: 0.4rem 0; }
 ul { margin: 0.4rem 0; padding-left: 1.2rem; }
 table { width: 100%; border-collapse: collapse; font-size: 0.92rem; margin: 0.6rem 0 1rem; }
@@ -112,9 +135,18 @@ th { font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; colo
   font-size: 0.85rem;
 }
 a { color: inherit; }
-@media (max-width: 40rem) {
+@media (max-width: 52rem) {
+  .layout { grid-template-columns: 1fr; padding-top: 0.75rem; }
+  .toc {
+    position: sticky;
+    top: 3.6rem;
+    max-height: none;
+    background: var(--paper);
+    padding: 0.4rem 0 0.6rem;
+  }
+  .toc ol { display: flex; gap: 0.8rem; overflow-x: auto; }
+  .toc .sub { display: none; }
   .tape li { grid-template-columns: 1fr; gap: 0.1rem; }
-  .stamp { font-size: 3.2rem; }
 }
 """
 
@@ -125,6 +157,15 @@ _RATING_COLOR = {
     "Underweight": "#8E4B2A",
     "Sell": "#8E2E2E",
     "REVIEW": "#5C6B7A",
+}
+# The header is dark, so the rating word uses a lighter ink than the body.
+_RATING_ON_DARK = {
+    "Buy": "#8fd6b0",
+    "Overweight": "#9dceae",
+    "Hold": "#e4c27a",
+    "Underweight": "#e2b09a",
+    "Sell": "#e7a3a3",
+    "REVIEW": "#c5d0da",
 }
 
 _SECTIONS = (
@@ -150,8 +191,9 @@ def render_page(days: list[dict]) -> str:
     else:
         latest = ordered[-1]
         prior = list(reversed(ordered[:-1]))
-        title = f"S&P 500 · {latest.get('trade_date') or ''}"
-        body = _ticket(latest) + _prior(prior) + _note()
+        ticker = latest.get("ticker") or ""
+        title = f"{ticker} · {latest.get('trade_date') or ''}"
+        body = _layout(latest, prior)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -163,33 +205,78 @@ def render_page(days: list[dict]) -> str:
 <style>{_CSS}</style>
 </head>
 <body>
-<main class="wrap">
 {body}
-</main>
 </body>
 </html>
 """
 
 
-def _ticket(day: dict) -> str:
+def _layout(day: dict, prior: list[dict]) -> str:
     rating = day.get("rating") or "REVIEW"
-    color = _RATING_COLOR.get(rating, _RATING_COLOR["REVIEW"])
-    sections = []
+    color = _RATING_ON_DARK.get(rating, _RATING_ON_DARK["REVIEW"])
+    blocks = []
+    toc = []
+    used = set()
     for label, key in _SECTIONS:
         text = day.get(key) or ""
         if not text.strip():
             continue
-        sections.append(f"<section><h2>{html.escape(label)}</h2>{_markdown(text)}</section>")
+        sid = _unique(_slug(label), used)
+        inner, _subs = _markdown(text, sid, used)
+        blocks.append(f'<section id="{sid}"><h2>{html.escape(label)}</h2>{inner}</section>')
+        toc.append((sid, label, []))
+    prior_html = _prior(prior)
+    if prior_html:
+        sid = _unique("earlier", used)
+        blocks.append(prior_html.replace("<section>", f'<section id="{sid}">', 1))
+        toc.append((sid, "Earlier sessions", []))
     return f"""
-<article class="ticket">
-<p class="kicker">{html.escape(day.get("ticker") or "")} · session {html.escape(day.get("trade_date") or "")}</p>
-<h1>Session ticket</h1>
-<p class="stamp" style="color:{color}">{html.escape(rating)}</p>
-<p class="summary">{_inline(day.get("summary") or "")}</p>
-<p class="meta">Written {html.escape(day.get("generated_at") or "")}</p>
-</article>
-{"".join(sections)}
+<header class="mast">
+  <p class="kicker">{html.escape(day.get("ticker") or "")} · session {html.escape(day.get("trade_date") or "")}</p>
+  <p class="stamp" style="color:{color}">{html.escape(rating)}</p>
+</header>
+<div class="layout">
+  <nav class="toc" aria-label="Contents">
+    <p>Contents</p>
+    {_toc(toc)}
+  </nav>
+  <main class="reading">
+    <p class="summary">{_inline(day.get("summary") or "")}</p>
+    <p class="meta">Written {html.escape(day.get("generated_at") or "")}</p>
+    {"".join(blocks)}
+    {_note()}
+  </main>
+</div>
 """
+
+
+def _toc(items: list[tuple[str, str, list[tuple[str, str]]]]) -> str:
+    rows = []
+    for sid, label, subs in items:
+        sub = ""
+        if subs:
+            links = "".join(
+                f'<li><a href="#{html.escape(hid)}">{html.escape(text)}</a></li>'
+                for hid, text in subs
+            )
+            sub = f'<ol class="sub">{links}</ol>'
+        rows.append(f'<li><a href="#{html.escape(sid)}">{html.escape(label)}</a>{sub}</li>')
+    return "<ol>" + "".join(rows) + "</ol>"
+
+
+def _unique(base: str, used: set[str]) -> str:
+    candidate = base or "section"
+    n = 2
+    while candidate in used:
+        candidate = f"{base}-{n}"
+        n += 1
+    used.add(candidate)
+    return candidate
+
+
+def _slug(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug[:48] or "section"
 
 
 def _prior(days: list[dict]) -> str:
@@ -216,9 +303,10 @@ def _note() -> str:
     )
 
 
-def _markdown(text: str) -> str:
+def _markdown(text: str, prefix: str, used: set[str]) -> tuple[str, list[tuple[str, str]]]:
     blocks = re.split(r"\n\s*\n", text.strip())
     parts = []
+    subs: list[tuple[str, str]] = []
     for block in blocks:
         lines = [line for line in block.splitlines() if line.strip()]
         if not lines:
@@ -228,7 +316,11 @@ def _markdown(text: str) -> str:
                 marks = len(line) - len(line.lstrip("#"))
                 # Section titles are already h2. Report headings sit under them.
                 level = min(max(marks + 1, 3), 4)
-                parts.append(f"<h{level}>{_inline(line.lstrip('#').strip())}</h{level}>")
+                plain = line.lstrip("#").strip()
+                hid = _unique(f"{prefix}-{_slug(plain)}", used)
+                if level == 3:
+                    subs.append((hid, plain))
+                parts.append(f'<h{level} id="{hid}">{_inline(plain)}</h{level}>')
             continue
         if all(line.strip()[:2] in ("- ", "* ") for line in lines):
             items = "".join(f"<li>{_inline(line.strip()[2:])}</li>" for line in lines)
@@ -238,7 +330,7 @@ def _markdown(text: str) -> str:
             parts.append(_table(lines))
             continue
         parts.append("<p>" + _inline(block).replace("\n", "<br>") + "</p>")
-    return "\n".join(parts)
+    return "\n".join(parts), subs
 
 
 def _is_table(lines: list[str]) -> bool:
