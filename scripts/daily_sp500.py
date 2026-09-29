@@ -32,11 +32,10 @@ from tradingagents.daily.publish import (
 )
 from tradingagents.daily.sp500 import TICKERS, coming_session, run_session
 
-# The ten names run one after another. Each name's opening burst of Yahoo,
-# Reddit, and SEC calls is followed by minutes of model time, and those
-# vendors already back off when they say they are busy. This gap is only
-# there so a name that fails in a few seconds does not start the next
-# burst immediately. Nine gaps are about a minute, inside the free-tier cap.
+# Five HKEX names, then five US names, one after another. Hong Kong names
+# call Tencent, East Money, and HKEXnews. US names call Yahoo, Reddit, and
+# SEC. The gap keeps a name that fails in a few seconds from starting the
+# next burst immediately.
 _GAP_SECONDS = 8
 
 

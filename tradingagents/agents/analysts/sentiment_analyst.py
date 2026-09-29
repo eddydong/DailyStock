@@ -31,12 +31,41 @@ from tradingagents.agents.structured import (
     invoke_structured_or_freetext,
 )
 from tradingagents.agents.tools import get_news
+from tradingagents.dataflows.symbols import normalize_symbol
 from tradingagents.dataflows.vendors.reddit import fetch_reddit_posts
 from tradingagents.dataflows.vendors.stocktwits import fetch_stocktwits_messages
+
+_HK_STOCKTWITS = (
+    "StockTwits does not list HKEX codes. Use the Hong Kong news block."
+)
+_HK_REDDIT = (
+    "The US finance subreddits have no cashtag for this HKEX code. "
+    "Use the Hong Kong news block."
+)
 
 
 def _seven_days_back(trade_date: str) -> str:
     return (datetime.strptime(trade_date, "%Y-%m-%d") - timedelta(days=7)).strftime("%Y-%m-%d")
+
+
+def _is_hk(ticker: str) -> bool:
+    canonical = normalize_symbol(ticker)
+    return isinstance(canonical, str) and canonical.endswith(".HK")
+
+
+def _social_blocks(ticker: str, start_date: str, end_date: str) -> tuple[str, str]:
+    """US cashtag feeds for a US ticker. HKEX codes are not listed there."""
+    if _is_hk(ticker):
+        return _HK_STOCKTWITS, _HK_REDDIT
+    # Pass the analysis window so a historical run trims social posts to it
+    # instead of leaking today's chatter into a backtest (#1220).
+    screen = jev_screen(ticker)
+    return (
+        fetch_stocktwits_messages(
+            ticker, limit=30, start_date=start_date, end_date=end_date, screen=screen
+        ),
+        fetch_reddit_posts(ticker, start_date=start_date, end_date=end_date, screen=screen),
+    )
 
 
 def create_sentiment_analyst(llm):
@@ -59,13 +88,7 @@ def create_sentiment_analyst(llm):
         # returns a string (no exceptions surface from here), so the LLM
         # always sees something — either real data or a clear placeholder.
         news_block = get_news.func(ticker, start_date, end_date)
-        # Pass the analysis window so a historical run trims social posts to it
-        # instead of leaking today's chatter into a backtest (#1220).
-        screen = jev_screen(ticker)
-        stocktwits_block = fetch_stocktwits_messages(
-            ticker, limit=30, start_date=start_date, end_date=end_date, screen=screen
-        )
-        reddit_block = fetch_reddit_posts(ticker, start_date=start_date, end_date=end_date, screen=screen)
+        stocktwits_block, reddit_block = _social_blocks(ticker, start_date, end_date)
 
         system_message = _build_system_message(
             ticker=ticker,

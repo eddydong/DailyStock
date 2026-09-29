@@ -15,6 +15,7 @@ from collections.abc import Iterable
 import pandas as pd
 from stockstats import wrap
 
+from tradingagents.dataflows.symbols import normalize_symbol
 from tradingagents.dataflows.vendors.yahoo.ohlcv import load_ohlcv
 
 # A fixed, common indicator set so the snapshot is the same shape every run.
@@ -34,7 +35,13 @@ def _verified_rows(symbol: str, curr_date: str) -> pd.DataFrame:
     """
     # As reported: this snapshot is quoted by the agents as exact prices, so a
     # gap-filled cell would put the previous session's number under this date.
-    data = load_ohlcv(symbol, curr_date, fill_gaps=False)
+    if str(normalize_symbol(symbol) or "").endswith(".HK"):
+        # Imported here so a US snapshot does not load the HK client.
+        from tradingagents.dataflows.vendors.hk import bars_for_snapshot
+
+        data = bars_for_snapshot(symbol, curr_date)
+    else:
+        data = load_ohlcv(symbol, curr_date, fill_gaps=False)
     if data is None or data.empty:
         raise ValueError(f"No OHLCV data available for {symbol}.")
 

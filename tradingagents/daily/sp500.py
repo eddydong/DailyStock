@@ -1,7 +1,8 @@
-"""One SPY session: all four analysts, then the usual debate and decision.
+"""One session for each name in the daily universe: all four analysts, then debate.
 
-The instrument is SPY, the S&P 500 ETF. The index itself has no company
-filings, so the fundamentals analyst would have nothing dated to read.
+The universe is the five most-traded HKEX names and the five most-traded US
+names. Each market uses its own data vendors. The analysts and the models
+are the same.
 
 Verbosity is the framework default: full analyst narratives, one bull/bear
 round, and one risk round. Nothing here shortens those prompts. To tighten
@@ -23,6 +24,7 @@ import yfinance as yf
 
 from tradingagents.agents.rating import parse_rating
 from tradingagents.daily.nyse import is_nyse_session
+from tradingagents.dataflows.symbols import normalize_symbol
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 
@@ -30,39 +32,64 @@ from tradingagents.graph.trading_graph import TradingAgentsGraph
 # unless that choice is made on purpose.
 ANALYSTS = ("market", "social", "news", "fundamentals")
 
-# Ranked by three-month average dollar volume (price times average daily
-# share volume) among US common stocks on NYSE and Nasdaq, as of 2026-09-29.
-# ETFs are left out. AAPL is already third, so the job adds the other nine.
-TICKERS = (
-    "MU",
+# Five names from each market, ranked by session turnover on 2026-09-29.
+# Hong Kong is that day's cash session. The US names are the last completed
+# US session, 2026-09-28, because the US open was still ahead. ETFs are out.
+HK_TICKERS = (
+    "0700.HK",   # Tencent
+    "9988.HK",   # Alibaba
+    "6869.HK",   # Yangtze Optical Fibre
+    "1810.HK",   # Xiaomi
+    "9926.HK",   # Akeso
+)
+US_TICKERS = (
     "NVDA",
-    "AAPL",
-    "MSFT",
-    "AMD",
+    "MU",
     "META",
     "TSLA",
-    "SPCX",
-    "INTC",
-    "AMZN",
+    "AMD",
 )
-TICKER = "AAPL"
+TICKERS = HK_TICKERS + US_TICKERS
+TICKER = "NVDA"
 _NY = ZoneInfo("America/New_York")
 # Cash session opens at 09:30. The daily job is 09:00, thirty minutes before.
 # A cash session is treated as complete a few minutes after the 16:00 close.
 _CLOSE = time(16, 5)
 
 
-def job_config() -> dict:
+def _is_hk(ticker: str) -> bool:
+    canonical = normalize_symbol(ticker)
+    return isinstance(canonical, str) and canonical.endswith(".HK")
+
+
+def job_config(ticker: str = TICKER) -> dict:
     """Framework defaults, with the provider pinned to whatever ``.env`` set.
 
     ``DEFAULT_CONFIG`` already applies ``TRADINGAGENTS_*`` overrides, including
     the DeepSeek Flash pair when those variables are present. Debate depth
     stays at the default of one round unless the env overrides say otherwise.
+
+    A US ticker keeps Yahoo, SEC, StockTwits, and Reddit. An HKEX ticker uses
+    the Hong Kong quote, statement, and filing vendors. The graph, the
+    analysts, and the models are the same either way. Shared macro tools
+    (FRED, the global-news search) stay on the default vendors.
     """
     config = DEFAULT_CONFIG.copy()
+    config["data_vendors"] = dict(config["data_vendors"])
+    config["tool_vendors"] = dict(config.get("tool_vendors") or {})
     # Checkpointing lets a crashed local run resume. A Cloud Run task has an
     # ephemeral disk, so a retry there starts clean.
     config["checkpoint_enabled"] = True
+    if _is_hk(ticker):
+        config["data_vendors"].update({
+            "core_stock_apis": "hk",
+            "technical_indicators": "hk",
+            "fundamental_data": "hk",
+        })
+        config["tool_vendors"].update({
+            "get_news": "hk",
+            "get_insider_transactions": "hk",
+        })
     return config
 
 
@@ -78,7 +105,7 @@ def choose_session(session_dates: list[date], now: datetime) -> str:
     else:
         usable = [day for day in session_dates if day <= today]
     if not usable:
-        raise RuntimeError("no completed SPY session")
+        raise RuntimeError("no completed US session")
     return max(usable).isoformat()
 
 
@@ -101,11 +128,11 @@ def coming_session(now: datetime | None = None) -> str | None:
 
 
 def last_completed_session(now: datetime | None = None) -> str:
-    """The latest SPY session whose cash close is in the past, as YYYY-MM-DD."""
+    """The latest US session whose cash close is in the past, as YYYY-MM-DD."""
     now = now or datetime.now(_NY)
     hist = yf.Ticker(TICKER).history(period="15d", auto_adjust=True)
     if hist.empty:
-        raise RuntimeError("SPY returned no recent sessions")
+        raise RuntimeError(f"{TICKER} returned no recent sessions")
     dates = []
     for stamp in hist.index:
         dates.append(stamp.date() if hasattr(stamp, "date") else stamp)
@@ -172,7 +199,7 @@ def run_session(trade_date: str | None = None, ticker: str = TICKER) -> dict:
     graph = TradingAgentsGraph(
         selected_analysts=list(ANALYSTS),
         debug=False,
-        config=job_config(),
+        config=job_config(ticker),
     )
     final_state, signal = graph.propagate(ticker, trade_date)
     rating = signal if signal else parse_rating(final_state.get("final_trade_decision") or "")

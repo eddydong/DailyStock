@@ -1,1 +1,1 @@
-"""Headless daily S&P 500 (SPY) run, one JSON result, and the static page."""
+"""Headless daily run for five HKEX names and five US names, plus the static page."""

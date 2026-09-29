@@ -163,10 +163,18 @@ def test_empty_archive_page_says_nothing_is_recorded():
     assert "No session has been recorded." in render_page([])
 
 
-def test_universe_is_the_ten_most_traded_including_aapl():
-    assert TICKERS == (
-        "MU", "NVDA", "AAPL", "MSFT", "AMD", "META", "TSLA", "SPCX", "INTC", "AMZN",
-    )
+def test_universe_is_five_hk_and_five_us():
+    from tradingagents.daily.sp500 import HK_TICKERS, US_TICKERS, job_config
+
+    assert TICKERS == HK_TICKERS + US_TICKERS
+    assert HK_TICKERS == ("0700.HK", "9988.HK", "6869.HK", "1810.HK", "9926.HK")
+    assert US_TICKERS == ("NVDA", "MU", "META", "TSLA", "AMD")
+    hk = job_config("0700.HK")
+    us = job_config("NVDA")
+    assert hk["data_vendors"]["fundamental_data"] == "hk"
+    assert hk["tool_vendors"]["get_news"] == "hk"
+    assert us["data_vendors"]["fundamental_data"] == "yfinance"
+    assert "get_news" not in us["tool_vendors"]
 
 
 def test_same_day_tickers_keep_separate_files(tmp_path):
