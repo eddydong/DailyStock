@@ -4,6 +4,11 @@
 #   1 vCPU, 2 GiB, one task, one Cloud Scheduler job, US BigQuery.
 # Do not add a second scheduler job, a larger machine, or a region
 # outside the US free-tier pricing.
+# Ten sessions share this one task. It is still one job and one scheduler.
+# Cloud Run jobs bill for the whole run, and this billing account's free
+# allowance is 240,000 vCPU-seconds and 450,000 GiB-seconds a month, shared
+# with dipalerts-research. At 1 vCPU and 2 GiB, 100 minutes every weekday
+# stays inside that allowance. Do not raise the timeout past 6000 seconds.
 #
 # Requires billing linked on the project (Google's $0 tier still needs it).
 # Secrets are read from the environment, never written into the image:
@@ -34,7 +39,7 @@ gcloud run jobs deploy "$JOB" \
   --args scripts/daily_sp500.py,--publish \
   --cpu 1 \
   --memory 2Gi \
-  --task-timeout 3600 \
+  --task-timeout 6000 \
   --max-retries 0 \
   --set-env-vars "GCP_PROJECT=${PROJECT},TZ=America/New_York,CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID},CLOUDFLARE_KV_NAMESPACE_ID=${CLOUDFLARE_KV_NAMESPACE_ID},DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY},FRED_API_KEY=${FRED_API_KEY},CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN},PAGE_PUBLISH_URL=${PAGE_PUBLISH_URL},PAGE_PUBLISH_TOKEN=${PAGE_PUBLISH_TOKEN},TRADINGAGENTS_LLM_PROVIDER=deepseek,TRADINGAGENTS_QUICK_THINK_LLM=deepseek-flash,TRADINGAGENTS_DEEP_THINK_LLM=deepseek-flash"
 

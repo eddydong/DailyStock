@@ -30,8 +30,21 @@ from tradingagents.graph.trading_graph import TradingAgentsGraph
 # unless that choice is made on purpose.
 ANALYSTS = ("market", "social", "news", "fundamentals")
 
-# AAPL for the first cloud test. A single company ticker is what the four
-# analysts are built for. Switch this when the test is done.
+# Ranked by three-month average dollar volume (price times average daily
+# share volume) among US common stocks on NYSE and Nasdaq, as of 2026-09-29.
+# ETFs are left out. AAPL is already third, so the job adds the other nine.
+TICKERS = (
+    "MU",
+    "NVDA",
+    "AAPL",
+    "MSFT",
+    "AMD",
+    "META",
+    "TSLA",
+    "SPCX",
+    "INTC",
+    "AMZN",
+)
 TICKER = "AAPL"
 _NY = ZoneInfo("America/New_York")
 # Cash session opens at 09:30. The daily job is 09:00, thirty minutes before.
@@ -150,8 +163,8 @@ def executive_summary(decision: str) -> str:
     return ""
 
 
-def run_session(trade_date: str | None = None) -> dict:
-    """Run SPY for ``trade_date`` (default: the session opening this morning)."""
+def run_session(trade_date: str | None = None, ticker: str = TICKER) -> dict:
+    """Run one ticker for ``trade_date`` (default: the session opening this morning)."""
     if trade_date is None:
         trade_date = coming_session()
         if trade_date is None:
@@ -161,9 +174,12 @@ def run_session(trade_date: str | None = None) -> dict:
         debug=False,
         config=job_config(),
     )
-    final_state, signal = graph.propagate(TICKER, trade_date)
+    final_state, signal = graph.propagate(ticker, trade_date)
     rating = signal if signal else parse_rating(final_state.get("final_trade_decision") or "")
     if not rating:
         rating = "REVIEW"
     generated_at = datetime.now(_NY).isoformat(timespec="seconds")
-    return result_document(final_state, rating, generated_at)
+    document = result_document(final_state, rating, generated_at)
+    document["ticker"] = ticker
+    document["trade_date"] = trade_date
+    return document

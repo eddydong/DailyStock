@@ -5,7 +5,7 @@
 // PUT /publish replaces that page. The daily job sends the bearer secret
 // PUBLISH_TOKEN. A normal visit never takes that branch.
 
-const MAX_PAGE_BYTES = 2_000_000;
+const MAX_PAGE_BYTES = 8_000_000;
 
 function authorized(request, secret) {
   if (!secret) return false;

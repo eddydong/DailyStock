@@ -1,4 +1,4 @@
-"""Static page: the latest SPY session in full, older sessions as one line each.
+"""Static page: the latest session for each ticker, older sessions as one line each.
 
 The HTML is self-contained so Cloudflare can store and serve a single document.
 No script fetches data. A later brevity change belongs in the agent prompts,
@@ -172,6 +172,59 @@ blockquote {
   color: var(--muted);
 }
 a { color: inherit; }
+.board {
+  position: sticky;
+  top: 4.2rem;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.55rem 1.25rem;
+  background: #24312b;
+  border-bottom: 1px solid #314039;
+}
+.board button {
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.38rem 0.65rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #d5ddd8;
+}
+.board button:hover, .board button:focus-visible { color: var(--sheet); }
+.board button:focus-visible { outline: 2px solid var(--mark); outline-offset: 2px; }
+.board button.is-on { background: var(--mark); color: var(--ink); }
+.board .rank, .board .chip {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+}
+.board .rank { color: #8ea096; }
+.board button.is-on .rank, .board button.is-on .chip { color: var(--ink); }
+.desk[hidden] { display: none !important; }
+.desk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.desk-head .name {
+  font-family: "Syne", "Figtree", sans-serif;
+  font-weight: 700;
+  font-size: 1.85rem;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  margin: 0;
+}
+.desk .toc { top: 7.6rem; }
+.desk section { scroll-margin-top: 8.2rem; }
 @media (max-width: 52rem) {
   .layout { grid-template-columns: 1fr; }
   .toc {
@@ -184,6 +237,9 @@ a { color: inherit; }
   .toc a { white-space: nowrap; }
   .reading { padding: 1.2rem 1rem 3rem; }
   .tape li { grid-template-columns: 1fr; gap: 0.1rem; }
+  .board { flex-wrap: nowrap; overflow-x: auto; top: 3.8rem; }
+  .board button { flex: 0 0 auto; }
+  .desk .toc { top: 7.2rem; }
 }
 """
 
@@ -219,9 +275,18 @@ _SECTIONS = (
 )
 
 
-def render_page(days: list[dict]) -> str:
-    """Latest session in full. Each earlier session is one tape line."""
-    ordered = sorted(days, key=lambda row: row.get("trade_date") or "")
+def render_page(days: list[dict], tickers: tuple[str, ...] | None = None) -> str:
+    """Latest session in full. Each earlier session is one tape line.
+
+    Pass ``tickers`` to pin the board, including names that have no session yet.
+    One name keeps the single-session page.
+    """
+    ordered = sorted(days, key=lambda row: ((row.get("trade_date") or ""), (row.get("ticker") or "")))
+    names = list(tickers) if tickers else _ticker_names(ordered)
+    if len(names) > 1:
+        latest_date = max((row.get("trade_date") or "" for row in ordered), default="")
+        title = f"Most traded · {latest_date}" if latest_date else "Most traded"
+        return _shell(title, _board(ordered, names))
     if not ordered:
         body = "<p>No session has been recorded.</p>"
         title = "Daily session"
@@ -299,7 +364,159 @@ def render_page(days: list[dict]) -> str:
 """
 
 
-def _layout(day: dict, prior: list[dict]) -> str:
+def _ticker_names(days: list[dict]) -> list[str]:
+    names = []
+    for row in days:
+        name = row.get("ticker") or ""
+        if name not in names:
+            names.append(name)
+    return names or [""]
+
+
+def _shell(title: str, body: str) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{html.escape(title)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Syne:wght@700&display=swap">
+<style>{_CSS}</style>
+</head>
+<body>
+{body}
+<script>
+{_BOARD_SCRIPT}
+</script>
+</body>
+</html>
+"""
+
+
+_BOARD_SCRIPT = """
+(() => {
+  const buttons = [...document.querySelectorAll(".board button")];
+  const desks = [...document.querySelectorAll(".desk")];
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const mast = document.querySelector(".mast");
+  const board = document.querySelector(".board");
+  let locked = null;
+  let frame = 0;
+  const visible = () => desks.find((desk) => !desk.hidden);
+  const linksOf = (desk) => [...desk.querySelectorAll(".toc a[href^='#']")];
+  const sectionsOf = (desk) => linksOf(desk).map((a) => document.getElementById(a.getAttribute("href").slice(1))).filter(Boolean);
+  const mark = (desk, id) => {
+    for (const a of linksOf(desk)) a.classList.toggle("is-active", a.getAttribute("href") === "#" + id);
+  };
+  const currentId = (desk) => {
+    const sections = sectionsOf(desk);
+    if (!sections.length) return "";
+    const doc = document.documentElement;
+    if (window.innerHeight + window.scrollY >= doc.scrollHeight - 2) return sections[sections.length - 1].id;
+    const line = (mast ? mast.getBoundingClientRect().height : 0) + (board ? board.getBoundingClientRect().height : 0) + 16;
+    let active = sections[0].id;
+    for (const section of sections) {
+      if (section.getBoundingClientRect().top <= line) active = section.id;
+    }
+    return active;
+  };
+  const sync = () => {
+    const desk = visible();
+    if (!desk) return;
+    mark(desk, locked || currentId(desk));
+  };
+  const show = (ticker) => {
+    locked = null;
+    for (const desk of desks) desk.hidden = desk.dataset.ticker !== ticker;
+    for (const button of buttons) {
+      const on = button.dataset.ticker === ticker;
+      button.classList.toggle("is-on", on);
+      button.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+    sync();
+  };
+  window.addEventListener("scroll", () => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      sync();
+    });
+  }, { passive: true });
+  window.addEventListener("scrollend", () => { locked = null; sync(); });
+  window.addEventListener("wheel", () => { locked = null; }, { passive: true });
+  window.addEventListener("touchstart", () => { locked = null; }, { passive: true });
+  desks.forEach((desk) => {
+    linksOf(desk).forEach((a) => a.addEventListener("click", (event) => {
+      event.preventDefault();
+      const id = a.getAttribute("href").slice(1);
+      const section = document.getElementById(id);
+      if (!section) return;
+      locked = id;
+      mark(desk, id);
+      section.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    }));
+  });
+  buttons.forEach((button) => button.addEventListener("click", () => {
+    show(button.dataset.ticker);
+    history.replaceState(null, "", "#" + button.dataset.ticker);
+  }));
+  const hashed = decodeURIComponent(location.hash.slice(1));
+  const start = buttons.find((button) => button.dataset.ticker === hashed)
+    || buttons.find((button) => button.getAttribute("aria-pressed") === "true")
+    || buttons[0];
+  if (start) show(start.dataset.ticker);
+})();
+"""
+
+
+def _board(days: list[dict], names: list[str]) -> str:
+    grouped: dict[str, list[dict]] = {}
+    for row in days:
+        grouped.setdefault(row.get("ticker") or "", []).append(row)
+    selected = "AAPL" if "AAPL" in names else names[0]
+    latest_date = max((row.get("trade_date") or "" for row in days), default="")
+    buttons = []
+    desks = []
+    for index, name in enumerate(names, start=1):
+        series = sorted(grouped.get(name, []), key=lambda row: row.get("trade_date") or "")
+        on = name == selected
+        klass = ' class="is-on"' if on else ""
+        rating = (series[-1].get("rating") if series else None) or "—"
+        buttons.append(
+            f'<button type="button"{klass} data-ticker="{html.escape(name)}" aria-pressed="{"true" if on else "false"}">'
+            f'<span class="rank">{index:02d}</span>'
+            f'<span class="sym">{html.escape(name)}</span>'
+            f'<span class="chip">{html.escape(rating)}</span>'
+            "</button>"
+        )
+        hidden = "" if on else " hidden"
+        if series:
+            body = _layout(series[-1], list(reversed(series[:-1])), prefix=name.lower(), heading=True)
+        else:
+            body = (
+                '<div class="layout"><nav class="toc" aria-label="Contents"><p>Contents</p></nav>'
+                '<main class="reading">'
+                f'<div class="desk-head"><p class="name">{html.escape(name)}</p></div>'
+                f"<p class=\"summary\">No session has been recorded for {html.escape(name)}.</p>"
+                "</main></div>"
+            )
+        desks.append(f'<div class="desk" data-ticker="{html.escape(name)}"{hidden}>{body}</div>')
+    return f"""
+<header class="mast">
+  <div>
+    <p class="ticker">Most traded</p>
+    <p class="kicker">Session {html.escape(latest_date)}</p>
+  </div>
+</header>
+<nav class="board" aria-label="Tickers">
+  {"".join(buttons)}
+</nav>
+{"".join(desks)}
+"""
+
+
+def _layout(day: dict, prior: list[dict], prefix: str = "", heading: bool = False) -> str:
     rating = day.get("rating") or "REVIEW"
     color = _RATING_ON_DARK.get(rating, _RATING_ON_DARK["REVIEW"])
     blocks = []
@@ -309,29 +526,42 @@ def _layout(day: dict, prior: list[dict]) -> str:
         text = day.get(key) or ""
         if not text.strip():
             continue
-        sid = _unique(_slug(label), used)
+        base = f"{prefix}-{_slug(label)}" if prefix else _slug(label)
+        sid = _unique(base, used)
         inner, _subs = _markdown(text, sid, used)
         blocks.append(f'<section id="{sid}"><h2>{html.escape(label)}</h2>{inner}</section>')
         toc.append((sid, label, []))
     prior_html = _prior(prior)
     if prior_html:
-        sid = _unique("earlier", used)
+        earlier = f"{prefix}-earlier" if prefix else "earlier"
+        sid = _unique(earlier, used)
         blocks.append(prior_html.replace("<section>", f'<section id="{sid}">', 1))
         toc.append((sid, "Earlier sessions", []))
-    return f"""
+    if heading:
+        mast = ""
+        desk_head = f"""
+    <div class="desk-head">
+      <p class="name">{html.escape(day.get("ticker") or "")}</p>
+      <p class="stamp" style="background:{color}">{html.escape(rating)}</p>
+    </div>"""
+    else:
+        mast = f"""
 <header class="mast">
   <div>
     <p class="ticker">{html.escape(day.get("ticker") or "")}</p>
     <p class="kicker">Session {html.escape(day.get("trade_date") or "")}</p>
   </div>
   <p class="stamp" style="background:{color}">{html.escape(rating)}</p>
-</header>
+</header>"""
+        desk_head = ""
+    return f"""{mast}
 <div class="layout">
   <nav class="toc" aria-label="Contents">
     <p>Contents</p>
     {_toc(toc)}
   </nav>
   <main class="reading">
+    {desk_head}
     <p class="summary">{_inline(day.get("summary") or "")}</p>
     <p class="meta">Written {html.escape(day.get("generated_at") or "")}</p>
     {"".join(blocks)}

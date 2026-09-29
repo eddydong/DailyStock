@@ -24,7 +24,8 @@ ARCHIVE = Path.home() / ".tradingagents" / "sp500"
 def save_local(document: dict, archive: Path = ARCHIVE) -> Path:
     """Replace that session's JSON file. Returns the path."""
     archive.mkdir(parents=True, exist_ok=True)
-    path = archive / f"{document['trade_date']}.json"
+    ticker = document.get("ticker") or "session"
+    path = archive / f"{document['trade_date']}-{ticker}.json"
     path.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
@@ -39,11 +40,11 @@ def load_local(archive: Path = ARCHIVE) -> list[dict]:
     return days
 
 
-def write_page(days: list[dict], archive: Path = ARCHIVE) -> Path:
+def write_page(days: list[dict], archive: Path = ARCHIVE, tickers: tuple[str, ...] | None = None) -> Path:
     """Render the static page beside the JSON archive."""
     archive.mkdir(parents=True, exist_ok=True)
     path = archive / "index.html"
-    path.write_text(render_page(days), encoding="utf-8")
+    path.write_text(render_page(days, tickers), encoding="utf-8")
     return path
 
 

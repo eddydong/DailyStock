@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from tradingagents.daily.nyse import is_nyse_session
 from tradingagents.daily.page import render_page
 from tradingagents.daily.publish import load_local, put_cloudflare_page, save_local, write_page
-from tradingagents.daily.sp500 import choose_session, coming_session, executive_summary, result_document
+from tradingagents.daily.sp500 import TICKERS, choose_session, coming_session, executive_summary, result_document
 
 _NY = ZoneInfo("America/New_York")
 
@@ -163,6 +163,56 @@ def test_empty_archive_page_says_nothing_is_recorded():
     assert "No session has been recorded." in render_page([])
 
 
+def test_universe_is_the_ten_most_traded_including_aapl():
+    assert TICKERS == (
+        "MU", "NVDA", "AAPL", "MSFT", "AMD", "META", "TSLA", "SPCX", "INTC", "AMZN",
+    )
+
+
+def test_same_day_tickers_keep_separate_files(tmp_path):
+    save_local({"trade_date": "2026-09-28", "ticker": "AAPL", "rating": "Hold", "summary": "Apple."}, tmp_path)
+    save_local({"trade_date": "2026-09-28", "ticker": "NVDA", "rating": "Buy", "summary": "Nvidia."}, tmp_path)
+    loaded = {(row["ticker"], row["summary"]) for row in load_local(tmp_path)}
+    assert loaded == {("AAPL", "Apple."), ("NVDA", "Nvidia.")}
+
+
+def test_board_lists_every_name_and_keeps_each_report():
+    html = render_page([
+        {
+            "trade_date": "2026-09-25",
+            "ticker": "AAPL",
+            "rating": "Sell",
+            "summary": "Old apple.",
+            "market_report": "OLD AAPL MARKET",
+        },
+        {
+            "trade_date": "2026-09-28",
+            "ticker": "AAPL",
+            "rating": "Hold",
+            "summary": "Apple now.",
+            "market_report": "AAPL MARKET",
+        },
+        {
+            "trade_date": "2026-09-28",
+            "ticker": "NVDA",
+            "rating": "Buy",
+            "summary": "Nvidia now.",
+            "market_report": "NVDA MARKET",
+        },
+    ], tickers=("NVDA", "AAPL", "MU"))
+    assert "AAPL MARKET" in html
+    assert "NVDA MARKET" in html
+    assert "OLD AAPL MARKET" not in html
+    assert "Old apple." in html
+    assert "No session has been recorded for MU." in html
+    assert 'data-ticker="NVDA" hidden' in html
+    assert '<span class="rank">01</span><span class="sym">NVDA</span>' in html
+    assert '<span class="rank">02</span><span class="sym">AAPL</span>' in html
+    assert 'aria-pressed="true"' in html
+    assert 'id="aapl-market"' in html
+    assert 'id="nvda-market"' in html
+
+
 def test_publish_url_puts_the_page_with_its_bearer(monkeypatch):
     captured = {}
 
@@ -188,3 +238,49 @@ def test_publish_url_puts_the_page_with_its_bearer(monkeypatch):
     assert captured["data"] == b"<!DOCTYPE html><html></html>"
     assert captured["headers"]["Authorization"] == "Bearer secret-token"
     assert captured["timeout"] == 60
+
+
+def test_batch_reads_storage_once_and_spaces_the_names(monkeypatch):
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "daily_sp500.py"
+    spec = importlib.util.spec_from_file_location("daily_sp500_script", path)
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+
+    stored = [{"trade_date": "2026-09-29", "ticker": "MU", "rating": "Hold", "summary": "done"}]
+    reads = {"n": 0}
+    gaps = []
+    published = []
+
+    def stored_days(_publish):
+        reads["n"] += 1
+        return list(stored)
+
+    def run(_date, ticker):
+        if ticker == "NVDA":
+            raise RuntimeError("vendor down")
+        return {"trade_date": "2026-09-29", "ticker": ticker, "rating": "Hold", "summary": ticker}
+
+    def save(document):
+        stored.append(document)
+        return Path("saved")
+
+    def write(days, _publish):
+        published.append([row["ticker"] for row in days])
+
+    monkeypatch.setattr(script, "_stored_days", stored_days)
+    monkeypatch.setattr(script, "run_session", run)
+    monkeypatch.setattr(script, "save_local", save)
+    monkeypatch.setattr(script, "_write_published_page", write)
+    monkeypatch.setattr(script.time, "sleep", lambda seconds: gaps.append(seconds))
+
+    failures = script._run_universe("2026-09-29", False)
+
+    finished = [row["ticker"] for row in stored]
+    assert failures == ["NVDA"]
+    assert reads["n"] == 1
+    assert finished == ["MU", *[name for name in script.TICKERS if name not in ("MU", "NVDA")]]
+    assert gaps == [script._GAP_SECONDS] * (len(script.TICKERS) - 2)
+    assert published[-1] == finished
