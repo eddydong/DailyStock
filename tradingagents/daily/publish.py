@@ -108,12 +108,33 @@ def load_bigquery(project: str, dataset: str = "sp500_daily", table: str = "deci
 
 
 def put_cloudflare_page(html: str) -> str:
-    """Store the page in Cloudflare KV. The Worker serves that one key.
+    """Store the page where the Worker can serve it.
 
-    Requires ``CLOUDFLARE_API_TOKEN``, ``CLOUDFLARE_ACCOUNT_ID``, and
-    ``CLOUDFLARE_KV_NAMESPACE_ID``. The token needs Workers KV Storage write
-    on this account and nothing else.
+    When ``PAGE_PUBLISH_URL`` is set, PUT the HTML there with
+    ``PAGE_PUBLISH_TOKEN``. That is the Cloud Run path: the Worker holds the
+    KV binding, and the token is only the bearer secret for ``PUT /publish``.
+
+    Otherwise PUT the KV key directly. That needs ``CLOUDFLARE_API_TOKEN``,
+    ``CLOUDFLARE_ACCOUNT_ID``, and ``CLOUDFLARE_KV_NAMESPACE_ID``. The API
+    token needs Workers KV Storage write on this account and nothing else.
     """
+    publish_url = os.environ.get("PAGE_PUBLISH_URL", "").strip()
+    if publish_url:
+        token = os.environ["PAGE_PUBLISH_TOKEN"]
+        response = requests.put(
+            publish_url,
+            data=html.encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "text/html; charset=utf-8",
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        if response.text.strip() != "ok":
+            raise RuntimeError("page publish was rejected")
+        return publish_url
+
     account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
     namespace = os.environ["CLOUDFLARE_KV_NAMESPACE_ID"]
     token = os.environ["CLOUDFLARE_API_TOKEN"]

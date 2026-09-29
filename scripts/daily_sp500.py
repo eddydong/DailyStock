@@ -5,7 +5,8 @@ Pass --publish to also upsert BigQuery and push the page to Cloudflare KV.
 Those steps run only when their environment is present:
 
 - GCP_PROJECT (BigQuery dataset sp500_daily, table decisions, location US)
-- CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_KV_NAMESPACE_ID
+- PAGE_PUBLISH_URL and PAGE_PUBLISH_TOKEN (the Worker bearer for PUT /publish)
+- or CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_KV_NAMESPACE_ID
 """
 
 from __future__ import annotations
@@ -42,7 +43,25 @@ def main() -> None:
         action="store_true",
         help="Also write BigQuery and Cloudflare when those environments are set.",
     )
+    parser.add_argument(
+        "--publish-only",
+        action="store_true",
+        help="Push the sessions already saved. Does not call the model.",
+    )
     args = parser.parse_args()
+
+    if args.publish_only:
+        project = os.environ.get("GCP_PROJECT", "")
+        if args.publish and project:
+            days = load_bigquery(project)
+            print(f"BigQuery rows {len(days)}", flush=True)
+        else:
+            days = load_local()
+        if not days:
+            print("No saved sessions to publish.", flush=True)
+            return
+        _write_published_page(days, args.publish)
+        return
 
     if args.date:
         trade_date = args.date
@@ -65,12 +84,21 @@ def main() -> None:
     else:
         days = load_local()
 
+    _write_published_page(days, args.publish)
+
+
+def _write_published_page(days: list, publish: bool) -> None:
     page = write_page(days)
     print(f"Page {page}", flush=True)
-
-    if args.publish and os.environ.get("CLOUDFLARE_API_TOKEN"):
-        put_cloudflare_page(render_page(days))
-        print("Cloudflare page updated", flush=True)
+    if not publish:
+        return
+    if os.environ.get("PAGE_PUBLISH_URL"):
+        if not os.environ.get("PAGE_PUBLISH_TOKEN"):
+            return
+    elif not os.environ.get("CLOUDFLARE_API_TOKEN"):
+        return
+    put_cloudflare_page(render_page(days))
+    print("Cloudflare page updated", flush=True)
 
 
 if __name__ == "__main__":

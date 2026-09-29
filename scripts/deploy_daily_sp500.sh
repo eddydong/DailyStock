@@ -9,19 +9,24 @@
 # Secrets are read from the environment, never written into the image:
 #   DEEPSEEK_API_KEY FRED_API_KEY
 #   CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_KV_NAMESPACE_ID
+#   PAGE_PUBLISH_TOKEN
 #   GCP_PROJECT
 set -euo pipefail
 
 PROJECT="${GCP_PROJECT:-aapl-daily-0926}"
 REGION=us-central1
-IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/cloud-run-source-deploy/sp500-daily"
+# This is the job Cloud Scheduler already runs. A second name would be a
+# second free-tier job, which this account does not have room for.
+JOB=aapl-daily
+IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/cloud-run-source-deploy/${JOB}"
+PAGE_PUBLISH_URL="${PAGE_PUBLISH_URL:-https://stock.eddykd.com/publish}"
 
 gcloud builds submit --project "$PROJECT" --tag "$IMAGE" .
 
 # Env vars are taken from the shell that runs this script. They are not
-# baked into the image. Create CLOUDFLARE_API_TOKEN in the Cloudflare
-# dashboard with Workers KV write on this account.
-gcloud run jobs deploy sp500-daily \
+# baked into the image. PAGE_PUBLISH_TOKEN is the Worker secret for
+# PUT /publish. CLOUDFLARE_API_TOKEN remains the direct KV path.
+gcloud run jobs deploy "$JOB" \
   --project "$PROJECT" \
   --region "$REGION" \
   --image "$IMAGE" \
@@ -31,19 +36,19 @@ gcloud run jobs deploy sp500-daily \
   --memory 2Gi \
   --task-timeout 3600 \
   --max-retries 0 \
-  --set-env-vars "GCP_PROJECT=${PROJECT},TZ=America/New_York,CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID},CLOUDFLARE_KV_NAMESPACE_ID=${CLOUDFLARE_KV_NAMESPACE_ID},DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY},FRED_API_KEY=${FRED_API_KEY},CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN},TRADINGAGENTS_LLM_PROVIDER=deepseek,TRADINGAGENTS_QUICK_THINK_LLM=deepseek-flash,TRADINGAGENTS_DEEP_THINK_LLM=deepseek-flash"
+  --set-env-vars "GCP_PROJECT=${PROJECT},TZ=America/New_York,CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID},CLOUDFLARE_KV_NAMESPACE_ID=${CLOUDFLARE_KV_NAMESPACE_ID},DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY},FRED_API_KEY=${FRED_API_KEY},CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN},PAGE_PUBLISH_URL=${PAGE_PUBLISH_URL},PAGE_PUBLISH_TOKEN=${PAGE_PUBLISH_TOKEN},TRADINGAGENTS_LLM_PROVIDER=deepseek,TRADINGAGENTS_QUICK_THINK_LLM=deepseek-flash,TRADINGAGENTS_DEEP_THINK_LLM=deepseek-flash"
 
 # 09:00 America/New_York, thirty minutes before the 09:30 cash open.
 # Monday–Friday only. The job itself exits immediately on an NYSE holiday,
 # so a holiday does not spend a model run. The first three Scheduler jobs
 # on the billing account are free. Do not add another.
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
-gcloud scheduler jobs create http sp500-daily \
+gcloud scheduler jobs create http "$JOB" \
   --project "$PROJECT" \
   --location "$REGION" \
   --schedule "0 9 * * 1-5" \
   --time-zone "America/New_York" \
-  --uri "https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT}/jobs/sp500-daily:run" \
+  --uri "https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT}/jobs/${JOB}:run" \
   --http-method POST \
   --oauth-service-account-email "${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 

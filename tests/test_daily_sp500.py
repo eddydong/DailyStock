@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 from tradingagents.daily.nyse import is_nyse_session
 from tradingagents.daily.page import render_page
-from tradingagents.daily.publish import load_local, save_local, write_page
+from tradingagents.daily.publish import load_local, put_cloudflare_page, save_local, write_page
 from tradingagents.daily.sp500 import choose_session, coming_session, executive_summary, result_document
 
 _NY = ZoneInfo("America/New_York")
@@ -161,3 +161,30 @@ def test_markdown_table_is_a_table():
 
 def test_empty_archive_page_says_nothing_is_recorded():
     assert "No session has been recorded." in render_page([])
+
+
+def test_publish_url_puts_the_page_with_its_bearer(monkeypatch):
+    captured = {}
+
+    class Response:
+        text = "ok"
+
+        def raise_for_status(self):
+            return None
+
+    def fake_put(url, data, headers, timeout):
+        captured["url"] = url
+        captured["data"] = data
+        captured["headers"] = headers
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setenv("PAGE_PUBLISH_URL", "https://stock.example/publish")
+    monkeypatch.setenv("PAGE_PUBLISH_TOKEN", "secret-token")
+    monkeypatch.setattr("tradingagents.daily.publish.requests.put", fake_put)
+
+    assert put_cloudflare_page("<!DOCTYPE html><html></html>") == "https://stock.example/publish"
+    assert captured["url"] == "https://stock.example/publish"
+    assert captured["data"] == b"<!DOCTYPE html><html></html>"
+    assert captured["headers"]["Authorization"] == "Bearer secret-token"
+    assert captured["timeout"] == 60
