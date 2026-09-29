@@ -30,20 +30,30 @@ from tradingagents.daily.publish import (
     upsert_bigquery,
     write_page,
 )
-from tradingagents.daily.sp500 import TICKERS, coming_session, run_session
+from tradingagents.daily.sp500 import (
+    TICKERS,
+    coming_session_for,
+    run_session,
+    tickers_for,
+)
 
-# Five HKEX names, then five US names, one after another. Hong Kong names
-# call Tencent, East Money, and HKEXnews. US names call Yahoo, Reddit, and
-# SEC. The gap keeps a name that fails in a few seconds from starting the
-# next burst immediately.
+# One market per invocation. Hong Kong names call Tencent, East Money, and
+# HKEXnews. US names call Yahoo, Reddit, and SEC. The gap keeps a name that
+# fails in a few seconds from starting the next burst immediately.
 _GAP_SECONDS = 8
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Daily SPY session")
+    parser = argparse.ArgumentParser(description="Daily pre-open session for one market")
+    parser.add_argument(
+        "--market",
+        choices=("hk", "us"),
+        default="us",
+        help="hk runs the Hong Kong names. us runs the US names. Default: us.",
+    )
     parser.add_argument(
         "--date",
-        help="Session date YYYY-MM-DD. Default: today's NYSE session, which is the day about to open.",
+        help="Session date YYYY-MM-DD. Default: today's session in that market, the day about to open.",
     )
     parser.add_argument(
         "--publish",
@@ -70,19 +80,20 @@ def main() -> None:
         _write_published_page(days, args.publish)
         return
 
+    names = tickers_for(args.market)
     if args.date:
         trade_date = args.date
     else:
-        trade_date = coming_session()
+        trade_date = coming_session_for(args.market)
         if trade_date is None:
-            print("NYSE is closed today. Skipping.", flush=True)
+            print(f"{args.market.upper()} is closed today. Skipping.", flush=True)
             return
-    failures = _run_universe(trade_date, args.publish)
+    failures = _run_universe(trade_date, args.publish, names)
     if failures:
         raise SystemExit(f"Failed: {', '.join(failures)}")
 
 
-def _run_universe(trade_date: str, publish: bool) -> list[str]:
+def _run_universe(trade_date: str, publish: bool, tickers: tuple[str, ...] | list[str]) -> list[str]:
     """Run each missing ticker. Storage is read once; the page is updated from memory.
 
     Names stay in series. A parallel burst is what gets Yahoo and Reddit to
@@ -92,7 +103,7 @@ def _run_universe(trade_date: str, publish: bool) -> list[str]:
     failures = []
     published = False
     started = False
-    for ticker in TICKERS:
+    for ticker in tickers:
         if any(row.get("trade_date") == trade_date and row.get("ticker") == ticker for row in days):
             print(f"Already saved {ticker} {trade_date}", flush=True)
             continue

@@ -3,12 +3,22 @@
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
+from tradingagents.daily.hkex import is_hkex_session
 from tradingagents.daily.nyse import is_nyse_session
 from tradingagents.daily.page import render_page
 from tradingagents.daily.publish import load_local, put_cloudflare_page, save_local, write_page
-from tradingagents.daily.sp500 import TICKERS, choose_session, coming_session, executive_summary, result_document
+from tradingagents.daily.sp500 import (
+    TICKERS,
+    US_TICKERS,
+    choose_session,
+    coming_hk_session,
+    coming_session,
+    executive_summary,
+    result_document,
+)
 
 _NY = ZoneInfo("America/New_York")
+_HK = ZoneInfo("Asia/Hong_Kong")
 
 
 def test_session_before_the_close_uses_the_previous_day():
@@ -37,6 +47,20 @@ def test_preopen_uses_the_session_about_to_open():
 def test_saturday_is_not_a_session():
     saturday = datetime(2026, 9, 26, 9, 0, tzinfo=_NY)
     assert coming_session(saturday) is None
+
+
+def test_hk_preopen_uses_the_session_about_to_open():
+    morning = datetime(2026, 9, 29, 9, 0, tzinfo=_HK)
+    assert coming_hk_session(morning) == "2026-09-29"
+
+
+def test_hk_holiday_and_weekend_are_not_sessions():
+    lunar_new_year = datetime(2026, 2, 17, 9, 0, tzinfo=_HK)
+    assert coming_hk_session(lunar_new_year) is None
+    assert is_hkex_session(date(2026, 2, 16)) is True  # half day, still opens
+    assert is_hkex_session(date(2026, 7, 1)) is False
+    saturday = datetime(2026, 9, 26, 9, 0, tzinfo=_HK)
+    assert coming_hk_session(saturday) is None
 
 
 def test_known_2026_holidays_are_closed_and_a_normal_friday_is_open():
@@ -284,11 +308,11 @@ def test_batch_reads_storage_once_and_spaces_the_names(monkeypatch):
     monkeypatch.setattr(script, "_write_published_page", write)
     monkeypatch.setattr(script.time, "sleep", lambda seconds: gaps.append(seconds))
 
-    failures = script._run_universe("2026-09-29", False)
+    failures = script._run_universe("2026-09-29", False, US_TICKERS)
 
     finished = [row["ticker"] for row in stored]
     assert failures == ["NVDA"]
     assert reads["n"] == 1
-    assert finished == ["MU", *[name for name in script.TICKERS if name not in ("MU", "NVDA")]]
-    assert gaps == [script._GAP_SECONDS] * (len(script.TICKERS) - 2)
+    assert finished == ["MU", *[name for name in US_TICKERS if name not in ("MU", "NVDA")]]
+    assert gaps == [script._GAP_SECONDS] * (len(US_TICKERS) - 2)
     assert published[-1] == finished

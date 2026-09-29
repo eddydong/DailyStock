@@ -1,8 +1,8 @@
 """One session for each name in the daily universe: all four analysts, then debate.
 
 The universe is the five most-traded HKEX names and the five most-traded US
-names. Each market uses its own data vendors. The analysts and the models
-are the same.
+names. Each market has its own pre-open job, at 09:00 local time, and its
+own data vendors. The analysts and the models are the same.
 
 Verbosity is the framework default: full analyst narratives, one bull/bear
 round, and one risk round. Nothing here shortens those prompts. To tighten
@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 import yfinance as yf
 
 from tradingagents.agents.rating import parse_rating
+from tradingagents.daily.hkex import is_hkex_session
 from tradingagents.daily.nyse import is_nyse_session
 from tradingagents.dataflows.symbols import normalize_symbol
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -52,8 +53,10 @@ US_TICKERS = (
 TICKERS = HK_TICKERS + US_TICKERS
 TICKER = "NVDA"
 _NY = ZoneInfo("America/New_York")
-# Cash session opens at 09:30. The daily job is 09:00, thirty minutes before.
-# A cash session is treated as complete a few minutes after the 16:00 close.
+_HK = ZoneInfo("Asia/Hong_Kong")
+# Each cash session opens at 09:30 local time. That market's job is 09:00,
+# thirty minutes before. A US cash session is treated as complete a few
+# minutes after the 16:00 close.
 _CLOSE = time(16, 5)
 
 
@@ -107,6 +110,40 @@ def choose_session(session_dates: list[date], now: datetime) -> str:
     if not usable:
         raise RuntimeError("no completed US session")
     return max(usable).isoformat()
+
+
+def tickers_for(market: str) -> tuple[str, ...]:
+    """The names one pre-open job analyzes."""
+    if market == "hk":
+        return HK_TICKERS
+    if market == "us":
+        return US_TICKERS
+    raise ValueError(f"market must be 'hk' or 'us', got {market!r}")
+
+
+def coming_hk_session(now: datetime | None = None) -> str | None:
+    """The HKEX session about to open, or None when the exchange is closed.
+
+    The date is today in Hong Kong, including a run at 09:00 before the 09:30
+    open. A half day still opens at 09:30, so it is a session.
+    """
+    now = now or datetime.now(_HK)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=_HK)
+    else:
+        now = now.astimezone(_HK)
+    if not is_hkex_session(now.date()):
+        return None
+    return now.date().isoformat()
+
+
+def coming_session_for(market: str, now: datetime | None = None) -> str | None:
+    """The session the named market's pre-open job should analyze."""
+    if market == "hk":
+        return coming_hk_session(now)
+    if market == "us":
+        return coming_session(now)
+    raise ValueError(f"market must be 'hk' or 'us', got {market!r}")
 
 
 def coming_session(now: datetime | None = None) -> str | None:
@@ -193,9 +230,10 @@ def executive_summary(decision: str) -> str:
 def run_session(trade_date: str | None = None, ticker: str = TICKER) -> dict:
     """Run one ticker for ``trade_date`` (default: the session opening this morning)."""
     if trade_date is None:
-        trade_date = coming_session()
+        trade_date = coming_hk_session() if _is_hk(ticker) else coming_session()
         if trade_date is None:
-            raise RuntimeError("NYSE is closed today")
+            closed = "HKEX" if _is_hk(ticker) else "NYSE"
+            raise RuntimeError(f"{closed} is closed today")
     graph = TradingAgentsGraph(
         selected_analysts=list(ANALYSTS),
         debug=False,
@@ -205,7 +243,8 @@ def run_session(trade_date: str | None = None, ticker: str = TICKER) -> dict:
     rating = signal if signal else parse_rating(final_state.get("final_trade_decision") or "")
     if not rating:
         rating = "REVIEW"
-    generated_at = datetime.now(_NY).isoformat(timespec="seconds")
+    zone = _HK if _is_hk(ticker) else _NY
+    generated_at = datetime.now(zone).isoformat(timespec="seconds")
     document = result_document(final_state, rating, generated_at)
     document["ticker"] = ticker
     document["trade_date"] = trade_date
