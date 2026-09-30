@@ -22,7 +22,7 @@ import pandas as pd
 import requests
 from stockstats import wrap
 
-from tradingagents.dataflows.date_window import in_window
+from tradingagents.dataflows.date_window import in_window, is_historical
 from tradingagents.dataflows.errors import NoMarketDataError, VendorRateLimitError
 from tradingagents.dataflows.symbols import normalize_symbol
 from tradingagents.dataflows.vendor_gate import hk as hk_gate
@@ -78,12 +78,19 @@ def _get_json_once(url: str, params: dict | None = None, headers: dict | None = 
 
 
 def _bars(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-    """Forward-adjusted daily bars. Volume is shares, not board lots."""
+    """Daily bars. Volume is shares, not board lots.
+
+    A run dated today uses forward-adjusted prices. A past run uses the
+    unadjusted session prices: a later dividend or split rewrites the
+    adjusted series, and that rewrite would not have been known yet.
+    """
     digits, canonical = _code(symbol)
     tencent = f"hk{digits}"
-    payload = _get_json(_KLINE, {"param": f"{tencent},day,{start_date},{end_date},800,qfq"})
+    adjusted = not is_historical(end_date)
+    param = f"{tencent},day,{start_date},{end_date},800" + (",qfq" if adjusted else "")
+    payload = _get_json(_KLINE, {"param": param})
     item = (payload.get("data") or {}).get(tencent) or {}
-    rows = item.get("qfqday") or item.get("day") or []
+    rows = (item.get("qfqday") or item.get("day") or []) if adjusted else (item.get("day") or [])
     parsed = []
     for row in rows:
         if not isinstance(row, list) or len(row) < 6:
@@ -130,9 +137,16 @@ def get_stock(symbol: str, start_date: str, end_date: str) -> str:
     shown["Date"] = shown["Date"].dt.strftime("%Y-%m-%d")
     for column in ("Open", "High", "Low", "Close"):
         shown[column] = shown[column].round(3)
+    if is_historical(end_date):
+        source = (
+            "Tencent quote, unadjusted session prices, HKD. Volume is shares. "
+            "Later dividends and splits are not applied."
+        )
+    else:
+        source = "Tencent quote, forward-adjusted, HKD. Volume is shares."
     header = (
         f"# Stock data for {canonical} from {start_date} to {end_date}\n"
-        f"# Source: Tencent quote, forward-adjusted, HKD. Volume is shares.\n"
+        f"# Source: {source}\n"
         f"# Total records: {len(shown)}\n\n"
     )
     return header + shown.to_csv(index=False)
@@ -163,7 +177,9 @@ def get_indicator(symbol: str, indicator: str, curr_date: str, look_back_days: i
     return (
         f"## {indicator} values from {start_dt.strftime('%Y-%m-%d')} to {curr_date}:\n\n"
         + "\n".join(lines)
-        + "\n\nComputed from Tencent forward-adjusted HKEX daily bars.\n"
+        + "\n\nComputed from Tencent "
+        + ("unadjusted" if is_historical(curr_date) else "forward-adjusted")
+        + " HKEX daily bars.\n"
     )
 
 
@@ -213,8 +229,29 @@ def _periods(code: str, curr_date: str | None, freq: str) -> list[dict]:
     return kept[:4]
 
 
+def _withhold_statements(curr_date: str | None, label: str, title: str) -> str | None:
+    """East Money dates a statement by period end and has no publication date.
+
+    A past run cannot tell which of those periods had been released, so it is
+    told so. A run dated today still receives the periods East Money lists now.
+    HKEXnews announcements keep their own publication time.
+    """
+    if not is_historical(curr_date):
+        return None
+    return (
+        f"# {title} for {label}\n"
+        f"# Point-in-time as of: {curr_date}\n\n"
+        f"{title} data is withheld for this date. East Money dates a statement by "
+        f"the period it covers and reports no publication date, so it cannot show "
+        f"which figures were public on {curr_date}."
+    )
+
+
 def _statement(symbol: str, kind: str, freq: str, curr_date: str | None, title: str) -> str:
     code, canonical = _code(symbol)
+    withheld = _withhold_statements(curr_date, canonical, title)
+    if withheld:
+        return withheld
     periods = _periods(code, curr_date, freq)
     if not periods:
         raise NoMarketDataError(symbol, canonical, f"no {freq} {title} on or before {curr_date}")
@@ -239,7 +276,8 @@ def _statement(symbol: str, kind: str, freq: str, curr_date: str | None, title: 
     header = (
         f"# {title} for {canonical} ({freq})\n"
         f"# Source: East Money HK filings. Currency: {currency or 'as reported'}.\n"
-        "# A period is included only when the company published it. "
+        "# Periods are dated by the fiscal period end. East Money lists a period "
+        "after the company has published it. "
         "Hong Kong does not require a US-style quarterly report.\n\n"
     )
     return header + frame.to_csv()
@@ -248,6 +286,9 @@ def _statement(symbol: str, kind: str, freq: str, curr_date: str | None, title: 
 def get_fundamentals(ticker: str, curr_date: str | None = None) -> str:
     """Latest reported income lines for an HKEX code, with the filing currency."""
     code, canonical = _code(ticker)
+    withheld = _withhold_statements(curr_date, canonical, "Company fundamentals")
+    if withheld:
+        return withheld
     periods = _periods(code, curr_date, "quarterly")
     if not periods:
         raise NoMarketDataError(ticker, canonical, "no reported periods")

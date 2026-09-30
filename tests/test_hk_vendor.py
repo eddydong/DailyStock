@@ -33,6 +33,7 @@ def test_tencent_daily_bars_keep_share_volume(monkeypatch):
 
 @pytest.mark.unit
 def test_income_statement_labels_currency_and_period(monkeypatch):
+    monkeypatch.setattr(hk, "is_historical", lambda _date: False)
     def fake_json(url, params=None, headers=None):
         report = (params or {}).get("reportName")
         if report == "RPT_CUSTOM_HKSK_APPFN_CASHFLOW_SUMMARY":
@@ -62,6 +63,38 @@ def test_income_statement_labels_currency_and_period(monkeypatch):
     assert "人民币" in text
     assert "2026-03-31" in text
     assert "194166000000" in text
+
+
+@pytest.mark.unit
+def test_a_past_run_is_not_served_east_money_statements(monkeypatch):
+    monkeypatch.setattr(hk, "_get_json", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not fetch")))
+    text = hk.get_income_statement("0700.HK", "quarterly", "2024-06-01")
+    assert "withheld" in text
+    assert "publication date" in text
+    assert "2024-06-01" in text
+
+
+@pytest.mark.unit
+def test_a_past_run_uses_unadjusted_bars_and_ignores_later_adjustments(monkeypatch):
+    seen = {}
+
+    def fake_json(url, params=None, headers=None):
+        seen["param"] = (params or {}).get("param")
+        return {
+            "data": {
+                "hk00700": {
+                    "qfqday": [["2024-05-30", "1", "1", "1", "1", "1"]],
+                    "day": [["2024-05-30", "400", "410", "420", "390", "1000"]],
+                }
+            }
+        }
+
+    monkeypatch.setattr(hk, "_get_json", fake_json)
+    text = hk.get_stock("0700.HK", "2024-05-01", "2024-05-31")
+    assert seen["param"].endswith(",800")
+    assert "qfq" not in seen["param"]
+    assert "410" in text
+    assert "unadjusted" in text
 
 
 @pytest.mark.unit
