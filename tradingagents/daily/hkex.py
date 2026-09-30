@@ -1,7 +1,8 @@
 """HKEX cash-session calendar.
 
-The Hong Kong job fires at 09:00 Asia/Hong_Kong, which is 30 minutes before
-the 09:30 open. Cloud Scheduler can only say Monday–Friday, so full-day
+The Hong Kong job fires at 08:15 Asia/Hong_Kong. Five names take about 40
+minutes, so that start finishes before the 09:30 open. Cloud Scheduler can
+only say Monday–Friday, so full-day
 closures are skipped here. A half day (the morning session still opens at
 09:30) is a trading day.
 

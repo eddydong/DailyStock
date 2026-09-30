@@ -1,7 +1,7 @@
 #!/bin/bash
 # Deploy the two pre-open jobs to Cloud Run in us-central1.
 # Each job is 1 vCPU and 2 GiB. They do not run at the same time:
-# Hong Kong fires at 09:00 Asia/Hong_Kong, the US job at 09:00 America/New_York.
+# Hong Kong fires at 08:15 Asia/Hong_Kong, the US job at 08:15 America/New_York.
 # Do not add a larger machine or a region outside the US free-tier pricing.
 # Cloud Run jobs bill for the whole run, and this billing account's free
 # allowance is 240,000 vCPU-seconds and 450,000 GiB-seconds a month, shared
@@ -56,7 +56,8 @@ gcloud run jobs deploy "$HK_JOB" \
   --max-retries 0 \
   --set-env-vars "${ENV_COMMON},TZ=Asia/Hong_Kong"
 
-# 09:00 local time, thirty minutes before the 09:30 cash open.
+# 08:15 local time. Five serial names take about 40 minutes, so this
+# finishes before the 09:30 cash open. A 09:00 start does not.
 # Monday–Friday only. Each job exits immediately on that market's holiday,
 # so a holiday does not spend a model run. Both schedulers stay in
 # us-central1. The timezone is what moves the clock.
@@ -67,7 +68,7 @@ upsert_scheduler() {
   local name="$1" zone="$2" uri="$3"
   local common=(
     --project "$PROJECT" --location "$REGION"
-    --schedule "0 9 * * 1-5" --time-zone "$zone"
+    --schedule "15 8 * * 1-5" --time-zone "$zone"
     --uri "$uri" --http-method POST
     --oauth-service-account-email "$SA"
   )

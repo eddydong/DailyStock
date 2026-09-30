@@ -1,7 +1,8 @@
 """NYSE cash-session calendar.
 
-The scheduler fires at 09:00 America/New_York, which is 30 minutes before the
-9:30 open. Cloud Scheduler can only say Monday–Friday, so holidays are
+The scheduler fires at 08:15 America/New_York. Five names take about 40
+minutes, so that start finishes before the 09:30 open. Cloud Scheduler can
+only say Monday–Friday, so holidays are
 skipped here. An early close (the exchange is open, then shuts early) is
 still a trading day.
 """

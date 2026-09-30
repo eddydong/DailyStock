@@ -1,8 +1,9 @@
 """One session for each name in the daily universe: all four analysts, then debate.
 
 The universe is the five most-traded HKEX names and the five most-traded US
-names. Each market has its own pre-open job, at 09:00 local time, and its
-own data vendors. The analysts and the models are the same.
+names. Each market has its own pre-open job, at 08:15 local time, and its
+own data vendors. Five serial names take about 40 minutes, so 08:15 leaves
+them finished before the 09:30 open. The analysts and the models are the same.
 
 Verbosity is the framework default: full analyst narratives, one bull/bear
 round, and one risk round. Nothing here shortens those prompts. To tighten
@@ -54,9 +55,9 @@ TICKERS = HK_TICKERS + US_TICKERS
 TICKER = "NVDA"
 _NY = ZoneInfo("America/New_York")
 _HK = ZoneInfo("Asia/Hong_Kong")
-# Each cash session opens at 09:30 local time. That market's job is 09:00,
-# thirty minutes before. A US cash session is treated as complete a few
-# minutes after the 16:00 close.
+# Each cash session opens at 09:30 local time. The job starts at 08:15,
+# seventy-five minutes before, because five names run one after another.
+# A US cash session is treated as complete a few minutes after the 16:00 close.
 _CLOSE = time(16, 5)
 
 
@@ -124,7 +125,7 @@ def tickers_for(market: str) -> tuple[str, ...]:
 def coming_hk_session(now: datetime | None = None) -> str | None:
     """The HKEX session about to open, or None when the exchange is closed.
 
-    The date is today in Hong Kong, including a run at 09:00 before the 09:30
+    The date is today in Hong Kong, including a run at 08:15 before the 09:30
     open. A half day still opens at 09:30, so it is a session.
     """
     now = now or datetime.now(_HK)
@@ -149,7 +150,7 @@ def coming_session_for(market: str, now: datetime | None = None) -> str | None:
 def coming_session(now: datetime | None = None) -> str | None:
     """The NYSE session about to open, or None when the exchange is closed.
 
-    The date is today in New York, including a run at 09:00 before the 09:30
+    The date is today in New York, including a run at 08:15 before the 09:30
     open. Prices for that morning still end at the previous close, because
     today's cash bar does not exist yet. News, retail posts, live valuation
     fields, and prediction-market odds are current as of the run.
