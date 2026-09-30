@@ -1,1 +1,1 @@
-"""Headless daily run for five HKEX names and five US names, plus the static page."""
+"""Headless daily run for a fixed list of five HKEX names and five US names, plus the static page."""

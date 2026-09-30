@@ -1,0 +1,10 @@
+---
+description: The daily HK and US ticker lists are frozen. Do not re-rank or replace them unless the user asks.
+alwaysApply: true
+---
+
+# Fixed daily universe
+
+`HK_TICKERS` and `US_TICKERS` in `tradingagents/daily/sp500.py` are a fixed list. Do not re-rank them by turnover, volume, or a new session, and do not add or remove a name.
+
+Change that list only when the user explicitly asks for a different set of symbols.

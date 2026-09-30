@@ -187,7 +187,8 @@ def test_empty_archive_page_says_nothing_is_recorded():
     assert "No session has been recorded." in render_page([])
 
 
-def test_universe_is_five_hk_and_five_us():
+def test_universe_stays_the_frozen_ten():
+    """These ten names stay until the user asks for a different list."""
     from tradingagents.daily.sp500 import HK_TICKERS, US_TICKERS, job_config
 
     assert TICKERS == HK_TICKERS + US_TICKERS

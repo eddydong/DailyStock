@@ -1,7 +1,8 @@
 """One session for each name in the daily universe: all four analysts, then debate.
 
-The universe is the five most-traded HKEX names and the five most-traded US
-names. Each market has its own pre-open job, at 08:15 local time, and its
+The universe is a fixed list of five HKEX names and five US names. Leave
+those ten symbols as they are until the user asks for a different list.
+Each market has its own pre-open job, at 08:15 local time, and its
 own data vendors. Five serial names take about 40 minutes, so 08:15 leaves
 them finished before the 09:30 open. The analysts and the models are the same.
 
@@ -34,9 +35,8 @@ from tradingagents.graph.trading_graph import TradingAgentsGraph
 # unless that choice is made on purpose.
 ANALYSTS = ("market", "social", "news", "fundamentals")
 
-# Five names from each market, ranked by session turnover on 2026-09-29.
-# Hong Kong is that day's cash session. The US names are the last completed
-# US session, 2026-09-28, because the US open was still ahead. ETFs are out.
+# Frozen 2026-09-30. Do not re-rank or replace these symbols. A new session's
+# turnover is not a reason to edit this list. Change it only when the user asks.
 HK_TICKERS = (
     "0700.HK",   # Tencent
     "9988.HK",   # Alibaba
