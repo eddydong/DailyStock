@@ -105,7 +105,9 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None):
     # Normalize analyst selection to predefined order (selection is a 'set', order is fixed)
     selected_set = {analyst.value for analyst in selections["analysts"]}
     selected_analyst_keys = [a for a in ANALYST_ORDER if a in selected_set]
-    analyst_execution_plan = build_analyst_execution_plan(selected_analyst_keys)
+    analyst_execution_plan = build_analyst_execution_plan(
+        selected_analyst_keys, config.get("analyst_concurrency", 2)
+    )
     analyst_wall_time_tracker = AnalystWallTimeTracker(analyst_execution_plan)
 
     graph = TradingAgentsGraph(
@@ -190,9 +192,11 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None):
         )
         update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
-        first_analyst = analyst_execution_plan.specs[0].agent_node
-        message_buffer.update_agent_status(first_analyst, "in_progress")
-        analyst_wall_time_tracker.mark_started(selected_analyst_keys[0])
+        # The first wave starts together. Later waves stay pending until it files.
+        width = analyst_execution_plan.concurrency
+        for spec in analyst_execution_plan.specs[:width]:
+            message_buffer.update_agent_status(spec.agent_node, "in_progress")
+            analyst_wall_time_tracker.mark_started(spec.key)
         update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
         spinner_text = (
@@ -224,8 +228,8 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None):
         # try/finally tears the checkpointer down even if the stream raises.
         trace = []
         try:
-            for chunk in graph.graph.stream(graph.checkpoint_input(init_agent_state), **args):
-                for message in chunk.get("messages", []):
+            for messages, chunk in graph.stream_run(graph.checkpoint_input(init_agent_state), **args):
+                for message in messages:
                     msg_id = getattr(message, "id", None)
                     if msg_id is not None:
                         if msg_id in message_buffer._processed_message_ids:
@@ -242,6 +246,10 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None):
                                 message_buffer.add_tool_call(tool_call["name"], tool_call["args"])
                             else:
                                 message_buffer.add_tool_call(tool_call.name, tool_call.args)
+
+                if chunk is None:
+                    update_display(layout, stats_handler=stats_handler, start_time=start_time)
+                    continue
 
                 update_analyst_statuses(
                     message_buffer,
@@ -382,7 +390,9 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None):
         ).strip()
         save_path = Path(save_path_str)
         try:
-            report_file = write_report_tree(final_state, selections["ticker"], save_path)
+            report_file = write_report_tree(
+                final_state, selections["ticker"], save_path, settings=graph.run_settings()
+            )
             console.print(f"\n[green]✓ Report saved to:[/green] {save_path.resolve()}")
             console.print(f"  [dim]Complete report:[/dim] {report_file.name}")
         except Exception as e:

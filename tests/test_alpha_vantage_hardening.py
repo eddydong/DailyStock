@@ -80,7 +80,11 @@ _FUNDAMENTALS_JSON = json.dumps({
 @pytest.mark.unit
 def test_fundamentals_look_ahead_filter_runs_on_json_string(monkeypatch):
     # #1115: the payload arrives as a JSON *string*; the old dict-only guard let
-    # future-dated fiscal periods leak into historical runs.
+    # future-dated fiscal periods leak into a run dated today. A past run does
+    # not receive the statement at all, which is tested separately.
+    from tradingagents.dataflows import date_window
+
+    monkeypatch.setattr(date_window, "get_current_date", lambda: "2024-01-01")
     monkeypatch.setattr(avf, "_make_api_request", lambda fn, params: _FUNDAMENTALS_JSON)
     out = avf.get_balance_sheet("AAPL", curr_date="2024-01-01")
     assert isinstance(out, str)  # callers still receive a str
@@ -97,8 +101,21 @@ def test_fundamentals_no_curr_date_passes_through(monkeypatch):
 
 @pytest.mark.unit
 def test_fundamentals_non_json_body_unchanged(monkeypatch):
+    from tradingagents.dataflows import date_window
+
+    monkeypatch.setattr(date_window, "get_current_date", lambda: "2024-01-01")
     monkeypatch.setattr(avf, "_make_api_request", lambda fn, params: "not-json")
     assert avf.get_cashflow("AAPL", curr_date="2024-01-01") == "not-json"
+
+
+@pytest.mark.unit
+def test_a_past_run_is_not_served_undated_alpha_vantage_statements(monkeypatch):
+    def _refuse(*_a, **_k):
+        raise AssertionError("must not fetch")
+
+    monkeypatch.setattr(avf, "_make_api_request", _refuse)
+    out = avf.get_balance_sheet("AAPL", curr_date="2024-01-01")
+    assert "withheld" in out and "filing date" in out
 
 
 # ---------------------------------------------------------------------------

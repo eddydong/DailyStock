@@ -96,8 +96,9 @@ def main() -> None:
 def _run_universe(trade_date: str, publish: bool, tickers: tuple[str, ...] | list[str]) -> list[str]:
     """Run each missing ticker. Storage is read once; the page is updated from memory.
 
-    Names stay in series. A parallel burst is what gets Yahoo and Reddit to
-    answer 429, and the analysts already retry when that happens.
+    Names stay in series. Inside one name, two analysts run at a time.
+    A wider burst is what gets Yahoo, Reddit, and the Hong Kong sources to
+    answer 429, and the backoff spends the Cloud Run free-tier seconds.
     """
     days = _stored_days(publish)
     failures = []

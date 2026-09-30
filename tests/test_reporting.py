@@ -34,6 +34,28 @@ def test_write_report_tree_creates_files(tmp_path):
 
 
 @pytest.mark.unit
+def test_the_report_names_what_produced_it(tmp_path):
+    state = _state()
+    state["trade_date"] = "2026-09-25"
+    settings = {
+        "version": "0.5.1",
+        "llm_provider": "deepseek",
+        "deep_think_llm": "deepseek-flash",
+        "quick_think_llm": "deepseek-flash",
+        "analysts": ["market", "news"],
+        "max_debate_rounds": 1,
+        "max_risk_discuss_rounds": 1,
+        "data_vendors": {"core_stock_apis": "yfinance"},
+        "tool_vendors": {},
+    }
+    text = write_report_tree(state, "AAPL", tmp_path, settings=settings).read_text()
+    assert "Analysis date: 2026-09-25" in text
+    assert "TradingAgents 0.5.1: deepseek, deep deepseek-flash, quick deepseek-flash" in text
+    assert "Analysts: market, news" in text
+    assert "Data vendors: core_stock_apis yfinance" in text
+
+
+@pytest.mark.unit
 def test_save_reports_explicit_path(tmp_path):
     # Unbound: with an explicit save_path, the method doesn't touch self/config.
     out = TradingAgentsGraph.save_reports(None, _state(), "AAPL", save_path=tmp_path)

@@ -562,6 +562,25 @@ def _board(days: list[dict], names: list[str]) -> str:
 """
 
 
+def _produced(day: dict) -> str:
+    """One line for what produced the session. Absent on older saved sessions."""
+    settings = day.get("run_settings") or {}
+    if not settings:
+        return ""
+    version = settings.get("version") or "?"
+    provider = settings.get("llm_provider") or "?"
+    deep = settings.get("deep_think_llm") or "?"
+    quick = settings.get("quick_think_llm") or "?"
+    analysts = ", ".join(settings.get("analysts") or [])
+    vendors = {**(settings.get("data_vendors") or {}), **(settings.get("tool_vendors") or {})}
+    parts = [f"TradingAgents {version}", f"{provider}, deep {deep}, quick {quick}"]
+    if analysts:
+        parts.append(f"analysts {analysts}")
+    if vendors:
+        parts.append("data " + ", ".join(f"{key} {value}" for key, value in vendors.items()))
+    return f'<p class="meta">{html.escape(" · ".join(parts))}</p>'
+
+
 def _layout(day: dict, prior: list[dict], prefix: str = "", heading: bool = False) -> str:
     rating = day.get("rating") or "REVIEW"
     color = _RATING_ON_DARK.get(rating, _RATING_ON_DARK["REVIEW"])
@@ -610,6 +629,7 @@ def _layout(day: dict, prior: list[dict], prefix: str = "", heading: bool = Fals
     {desk_head}
     <p class="summary">{_inline(day.get("summary") or "")}</p>
     <p class="meta">Written {html.escape(day.get("generated_at") or "")}</p>
+    {_produced(day)}
     {"".join(blocks)}
     {_note()}
   </main>

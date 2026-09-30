@@ -103,6 +103,10 @@ class _FakeGraph:
         yield {"messages": [], "market_report": "M"}
         yield {"messages": [], "final_trade_decision": "Rating: Buy\n\nBuy NVDA."}
 
+    def stream_run(self, graph_input, **kwargs):
+        for chunk in self.stream(graph_input, **kwargs):
+            yield chunk.get("messages", []), chunk
+
 
 class _NullLive:
     def __init__(self, *a, **k):

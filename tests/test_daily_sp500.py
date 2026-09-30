@@ -130,9 +130,20 @@ def test_page_shows_the_latest_report_and_only_a_line_for_earlier_days():
         "final_decision": "full newer decision",
         "market_report": "NEWER MARKET REPORT",
         "generated_at": "2026-09-26T09:00:00-04:00",
+        "run_settings": {
+            "version": "0.5.1",
+            "llm_provider": "deepseek",
+            "deep_think_llm": "deepseek-flash",
+            "quick_think_llm": "deepseek-flash",
+            "analysts": ["market", "news"],
+            "data_vendors": {"core_stock_apis": "yfinance"},
+            "tool_vendors": {},
+        },
     }
     html = render_page([older, newer])
     assert "NEWER MARKET REPORT" in html
+    assert "TradingAgents 0.5.1" in html
+    assert "deepseek-flash" in html
     assert "OLDER MARKET REPORT" not in html
     assert "full older decision" not in html
     assert "Take the position down." in html
@@ -200,6 +211,7 @@ def test_universe_stays_the_frozen_ten():
     assert hk["tool_vendors"]["get_news"] == "hk"
     assert us["data_vendors"]["fundamental_data"] == "yfinance"
     assert "get_news" not in us["tool_vendors"]
+    assert hk["analyst_concurrency"] == us["analyst_concurrency"] == 2
 
 
 def test_same_day_tickers_keep_separate_files(tmp_path):

@@ -1,6 +1,7 @@
 import json
 
 from tradingagents.dataflows.config import get_config
+from tradingagents.dataflows.date_window import withhold_undisclosed_trades
 from tradingagents.dataflows.vendors.alpha_vantage.common import (
     _make_api_request,
     format_datetime_for_api,
@@ -82,6 +83,10 @@ def get_insider_transactions(symbol: str, curr_date: str | None = None) -> dict[
     Returns:
         Dictionary containing insider transaction data or JSON string.
     """
+
+    withheld = withhold_undisclosed_trades(curr_date, symbol)
+    if withheld:
+        return withheld
 
     params = {
         "symbol": symbol,

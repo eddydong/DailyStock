@@ -21,6 +21,7 @@ class AnalystNodeSpec:
 @dataclass(frozen=True)
 class AnalystExecutionPlan:
     specs: list[AnalystNodeSpec]
+    concurrency: int = 2
 
 
 ANALYST_NODE_SPECS: dict[str, AnalystNodeSpec] = {
@@ -58,6 +59,7 @@ ANALYST_NODE_SPECS: dict[str, AnalystNodeSpec] = {
 
 def build_analyst_execution_plan(
     selected_analysts: Iterable[str],
+    concurrency: int = 2,
 ) -> AnalystExecutionPlan:
     specs: list[AnalystNodeSpec] = []
     for analyst_key in selected_analysts:
@@ -69,6 +71,25 @@ def build_analyst_execution_plan(
     if not specs:
         raise ValueError("at least one analyst must be selected")
 
-    return AnalystExecutionPlan(specs=specs)
+    width = max(1, int(concurrency))
+    return AnalystExecutionPlan(specs=specs, concurrency=width)
+
+
+def current_wave(specs: list[AnalystNodeSpec], concurrency: int, done: set[str]) -> list[AnalystNodeSpec]:
+    """The wave that is running: the first one that still has an analyst to file."""
+    for wave in analyst_waves(specs, concurrency):
+        if any(spec.key not in done for spec in wave):
+            return wave
+    return []
+
+
+def analyst_waves(specs: list[AnalystNodeSpec], concurrency: int) -> list[list[AnalystNodeSpec]]:
+    """Split analysts into waves of ``concurrency``.
+
+    A wave runs together. The next wave starts when that wave has filed.
+    Width 1 is the serial layout. The daily jobs use 2.
+    """
+    width = max(1, int(concurrency))
+    return [specs[i:i + width] for i in range(0, len(specs), width)]
 
 

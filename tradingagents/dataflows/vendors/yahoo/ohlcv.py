@@ -10,6 +10,7 @@ from tradingagents.dataflows.config import get_config
 from tradingagents.dataflows.errors import NoMarketDataError, VendorRateLimitError
 from tradingagents.dataflows.net import vendor_reachable
 from tradingagents.dataflows.symbols import normalize_symbol, safe_ticker_component
+from tradingagents.dataflows.vendor_gate import yahoo as yahoo_gate
 
 logger = logging.getLogger(__name__)
 
@@ -44,17 +45,21 @@ def yf_retry(func, max_retries=3, base_delay=2.0):
     yfinance raises YFRateLimitError on HTTP 429 responses but does not
     retry them internally. This wrapper adds retry logic specifically
     for rate limits. Other exceptions propagate immediately.
+
+    One Yahoo call at a time, including the backoff. A second analyst waits
+    instead of opening another request into the same 429.
     """
-    for attempt in range(max_retries + 1):
-        try:
-            return func()
-        except YFRateLimitError:
-            if attempt < max_retries:
-                delay = base_delay * (2 ** attempt)
-                logger.warning(f"Yahoo Finance rate limited, retrying in {delay:.0f}s (attempt {attempt + 1}/{max_retries})")
-                time.sleep(delay)
-            else:
-                raise
+    with yahoo_gate:
+        for attempt in range(max_retries + 1):
+            try:
+                return func()
+            except YFRateLimitError:
+                if attempt < max_retries:
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(f"Yahoo Finance rate limited, retrying in {delay:.0f}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(delay)
+                else:
+                    raise
 
 
 def _ensure_date_column(data: pd.DataFrame) -> pd.DataFrame:

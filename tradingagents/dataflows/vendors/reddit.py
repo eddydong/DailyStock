@@ -32,6 +32,7 @@ from urllib.request import Request, urlopen
 from tradingagents.dataflows.date_window import coverage_gap, in_window
 from tradingagents.dataflows.net import ssl_context
 from tradingagents.dataflows.symbols import crypto_base
+from tradingagents.dataflows.vendor_gate import reddit as reddit_gate
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +171,18 @@ def _read_capped(resp) -> bytes:
 
 
 def _fetch_subreddit_rss(
+    ticker: str,
+    sub: str,
+    limit: int,
+    timeout: float,
+    _retry: bool = True,
+) -> list[dict] | None:
+    """One Reddit fetch at a time, including the 429 backoff."""
+    with reddit_gate:
+        return _read_subreddit_rss(ticker, sub, limit, timeout, _retry)
+
+
+def _read_subreddit_rss(
     ticker: str,
     sub: str,
     limit: int,

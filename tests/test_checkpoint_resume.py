@@ -210,6 +210,8 @@ class TestCheckpointSignature(unittest.TestCase):
         # Stable for identical inputs.
         g.config = {"max_debate_rounds": 1, "max_risk_discuss_rounds": 1}
         self.assertEqual(base, g._run_signature("stock"))
+        # A checkpoint from the serial layout is not resumed on the wave layout.
+        self.assertIn("waves=2", base)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ from stockstats import wrap
 from tradingagents.dataflows.date_window import in_window
 from tradingagents.dataflows.errors import NoMarketDataError, VendorRateLimitError
 from tradingagents.dataflows.symbols import normalize_symbol
+from tradingagents.dataflows.vendor_gate import hk as hk_gate
 
 _KLINE = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
 _EM = "https://datacenter.eastmoney.com/securities/api/data/v1/get"
@@ -55,6 +56,12 @@ def _code(symbol: str) -> tuple[str, str]:
 
 
 def _get_json(url: str, params: dict | None = None, headers: dict | None = None) -> dict:
+    """One Hong Kong request at a time. Tencent, East Money, and HKEXnews share the gate."""
+    with hk_gate:
+        return _get_json_once(url, params, headers)
+
+
+def _get_json_once(url: str, params: dict | None = None, headers: dict | None = None) -> dict:
     try:
         response = requests.get(
             url,

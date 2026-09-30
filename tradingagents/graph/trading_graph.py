@@ -94,14 +94,24 @@ class TradingAgentsGraph:
             max_debate_rounds=self.config["max_debate_rounds"],
             max_risk_discuss_rounds=self.config["max_risk_discuss_rounds"],
         )
+        # An analyst takes two graph steps per tool round, plus its first turn
+        # and its wrap-up. A cap past the recursion limit ends the run there.
+        max_tool_rounds = self.config.get("max_tool_rounds", 20)
+        max_recur_limit = self.config.get("max_recur_limit", 100)
+        if 2 * max_tool_rounds + 2 >= max_recur_limit:
+            raise ValueError(
+                f"max_tool_rounds={max_tool_rounds} needs max_recur_limit above {2 * max_tool_rounds + 2}"
+            )
         self.graph_setup = GraphSetup(
             self.quick_thinking_llm,
             self.deep_thinking_llm,
             self.conditional_logic,
+            max_tool_rounds=max_tool_rounds,
+            analyst_concurrency=self.config.get("analyst_concurrency", 2),
         )
 
         self.propagator = Propagator(
-            max_recur_limit=self.config.get("max_recur_limit", 100),
+            max_recur_limit=max_recur_limit,
         )
         self.reflector = Reflector(self.quick_thinking_llm)
 
@@ -152,6 +162,9 @@ class TradingAgentsGraph:
             f"asset={asset_type}",
             # None, an empty book and a changed book are three different runs.
             f"portfolio={portfolio.fingerprint() if portfolio is not None else 'none'}",
+            # Wave width is part of the graph. A checkpoint from the serial
+            # layout, or from a different width, has nodes this graph lacks.
+            f"waves={self.config.get('analyst_concurrency', 2)}",
         ])
 
     def propagate(self, company_name, trade_date, asset_type: str = "stock", portfolio=None):
@@ -255,7 +268,32 @@ class TradingAgentsGraph:
                 / "reports"
                 / f"{safe_ticker_component(ticker)}_{stamp}"
             )
-        return write_report_tree(final_state, ticker, save_path)
+        runner = getattr(self, "run_settings", None)
+        settings = runner() if callable(runner) else None
+        return write_report_tree(final_state, ticker, save_path, settings=settings)
+
+    def run_settings(self) -> dict:
+        """What produces this graph's runs, for the saved report and state log.
+
+        An allowlist: endpoints, keys and local paths are never recorded.
+        """
+        import tradingagents
+
+        cfg = getattr(self, "config", {}) or {}
+        return {
+            "version": tradingagents.__version__,
+            "llm_provider": cfg.get("llm_provider"),
+            "deep_think_llm": cfg.get("deep_think_llm"),
+            "quick_think_llm": cfg.get("quick_think_llm"),
+            "analysts": list(getattr(self, "selected_analysts", ()) or ()),
+            "analyst_concurrency": cfg.get("analyst_concurrency"),
+            "max_tool_rounds": cfg.get("max_tool_rounds"),
+            "max_debate_rounds": cfg.get("max_debate_rounds"),
+            "max_risk_discuss_rounds": cfg.get("max_risk_discuss_rounds"),
+            "output_language": cfg.get("output_language"),
+            "data_vendors": dict(cfg.get("data_vendors") or {}),
+            "tool_vendors": dict(cfg.get("tool_vendors") or {}),
+        }
 
     def create_run_state(self, company_name, trade_date, asset_type: str = "stock", portfolio=None):
         """Build a run's initial state; propagate() and the CLI both start here.
@@ -312,24 +350,16 @@ class TradingAgentsGraph:
         # None resumes an existing checkpoint; init_agent_state starts fresh (#1249).
         graph_input = self.checkpoint_input(init_agent_state)
         if self.debug:
-            trace = []
-            last_printed = None
-            for chunk in self.graph.stream(graph_input, **args):
-                if chunk["messages"]:
-                    msg = chunk["messages"][-1]
-                    # Nodes after the trader don't append to messages, so the
-                    # same trailing message repeats across chunks. Print it only
-                    # when it changes (#1027); the trace/state merge is unchanged.
-                    signature = (type(msg).__name__, getattr(msg, "content", None))
-                    if signature != last_printed:
+            # A state repeats the messages before it, so each prints once (#1027).
+            final_state, printed = {}, set()
+            for messages, state in self.stream_run(graph_input, **args):
+                for msg in messages:
+                    key = getattr(msg, "id", None) or (type(msg).__name__, getattr(msg, "content", None))
+                    if key not in printed:
+                        printed.add(key)
                         msg.pretty_print()
-                        last_printed = signature
-                    trace.append(chunk)
-            # Streamed chunks are per-node deltas. Merge them so the returned
-            # state matches what graph.invoke() yields in the non-debug path.
-            final_state = {}
-            for chunk in trace:
-                final_state.update(chunk)
+                if state is not None:
+                    final_state.update(state)
         else:
             final_state = self.graph.invoke(graph_input, **args)
 
@@ -342,6 +372,28 @@ class TradingAgentsGraph:
         self.clear_checkpoint_on_success(company_name, trade_date, asset_type, portfolio)
 
         return final_state, self.process_signal(final_state["final_trade_decision"])
+
+    def stream_run(self, graph_input, **args):
+        """Stream a run as ``(messages, state)`` pairs.
+
+        ``messages`` are the agents' messages, the analysts' included. ``state``
+        is the run's state after a top-level step. A step inside an analyst's
+        own graph yields that analyst's report once it has text, else None.
+
+        Analysts in a wave work at the same time. Their reports reach the run
+        only when the wave finishes, so messages come from each analyst's own
+        finished steps as they happen.
+        """
+        args = {**args, "stream_mode": ["values", "tasks"], "subgraphs": True}
+        for namespace, mode, chunk in self.graph.stream(graph_input, **args):
+            if namespace:
+                result = chunk.get("result") if mode == "tasks" and isinstance(chunk, dict) else None
+                if isinstance(result, dict):
+                    report = {k: v for k, v in result.items() if k != "messages" and v}
+                    if result.get("messages") or report:
+                        yield result.get("messages", []), report or None
+            elif mode == "values":
+                yield chunk.get("messages", []), chunk
 
     def _log_state(self, trade_date, final_state):
         """Write a run's final state to JSON under the run's own ticker."""
@@ -373,6 +425,7 @@ class TradingAgentsGraph:
             },
             "investment_plan": final_state["investment_plan"],
             "final_trade_decision": final_state["final_trade_decision"],
+            "run_settings": self.run_settings(),
         }
 
         # A ticker that would escape the results directory is rejected.

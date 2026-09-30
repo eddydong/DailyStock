@@ -84,6 +84,10 @@ def job_config(ticker: str = TICKER) -> dict:
     # Checkpointing lets a crashed local run resume. A Cloud Run task has an
     # ephemeral disk, so a retry there starts clean.
     config["checkpoint_enabled"] = True
+    # Two analysts at a time on the 1 vCPU / 2 GiB task. Four at once stacks
+    # model calls and is what gets Yahoo, Reddit, and HKEXnews to answer 429.
+    # The retry then spends the free-tier seconds. Names stay serial below.
+    config["analyst_concurrency"] = 2
     if _is_hk(ticker):
         config["data_vendors"].update({
             "core_stock_apis": "hk",
@@ -249,4 +253,5 @@ def run_session(trade_date: str | None = None, ticker: str = TICKER) -> dict:
     document = result_document(final_state, rating, generated_at)
     document["ticker"] = ticker
     document["trade_date"] = trade_date
+    document["run_settings"] = graph.run_settings()
     return document

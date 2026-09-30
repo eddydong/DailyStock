@@ -8,6 +8,8 @@ the wiring: a restructure that drops a node, a tool or an edge fails here.
 from __future__ import annotations
 
 import copy
+import json
+import threading
 
 import pandas as pd
 import pytest
@@ -40,6 +42,8 @@ STRUCTURED = {
         overall_band=schemas.SentimentBand.NEUTRAL, overall_score=5.0, confidence="low", narrative="n"),
 }
 
+_CALL_LOCKS: dict[int, threading.Lock] = {}
+
 ARGS = {"symbol": "NVDA", "ticker": "NVDA", "curr_date": TRADE_DATE, "start_date": "2026-01-02",
         "end_date": TRADE_DATE, "indicator": "rsi", "topic": "Fed rate cut", "freq": "quarterly"}
 
@@ -65,9 +69,13 @@ class ScriptedModel(BaseChatModel):
         return RunnableLambda(lambda _: self._count() or STRUCTURED[schema])
 
     def _count(self) -> None:
-        self.calls.append(1)
-        if len(self.calls) == self.fail_at:
-            raise RuntimeError("provider unavailable")
+        # A wave runs two analysts at once. The call list is shared across
+        # bind_tools copies, so the count has to be one locked sequence.
+        lock = _CALL_LOCKS.setdefault(id(self.calls), threading.Lock())
+        with lock:
+            self.calls.append(1)
+            if len(self.calls) == self.fail_at:
+                raise RuntimeError("provider unavailable")
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
         self._count()
@@ -167,3 +175,48 @@ def test_a_graph_reused_across_runs_keeps_no_run_state(tmp_path, monkeypatch, of
     held = [v for v in vars(graph).values() if isinstance(v, dict) and TRADE_DATE in v]
     assert held == []
     assert len(list(tmp_path.glob("results/NVDA/TradingAgentsStrategy_logs/*.json"))) == 2
+
+
+class NeverStops(ScriptedModel):
+    """Calls tools on every turn they are offered, so the cap has to stop it."""
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        self._count()
+        if self.tools:
+            calls = [{"name": t.name, "id": f"call_{len(self.calls)}_{i}",
+                      "args": {k: v for k, v in ARGS.items()
+                               if k in t.tool_call_schema.model_json_schema()["properties"]}}
+                     for i, t in enumerate(self.tools)]
+            message = AIMessage(content="", tool_calls=calls)
+        else:
+            message = AIMessage(content=TEXT)
+        return ChatResult(generations=[ChatGeneration(message=message)])
+
+
+@pytest.mark.unit
+def test_an_analyst_writes_its_report_once_its_tool_rounds_are_spent(tmp_path, monkeypatch, offline):
+    model = NeverStops()
+    cfg = copy.deepcopy(DEFAULT_CONFIG)
+    cfg.update(results_dir=str(tmp_path / "results"), data_cache_dir=str(tmp_path / "cache"),
+               memory_log_path=str(tmp_path / "log.md"), max_tool_rounds=2, analyst_concurrency=1)
+    monkeypatch.setattr(trading_graph, "create_llm_client", lambda **k: _Client(model))
+    graph = trading_graph.TradingAgentsGraph(["market"], config=cfg)
+
+    state, signal = graph.propagate("NVDA", TRADE_DATE)
+
+    assert signal == "Overweight"
+    assert "Report." in state["market_report"]
+    logged = json.loads(next(tmp_path.rglob("full_states_log*.json")).read_text())
+    assert logged["run_settings"]["max_tool_rounds"] == 2
+    assert logged["run_settings"]["analyst_concurrency"] == 1
+
+
+@pytest.mark.unit
+def test_stream_run_yields_an_analyst_report_before_the_debate(tmp_path, monkeypatch, offline):
+    graph = _graph(tmp_path, monkeypatch, ScriptedModel(), analyst_concurrency=2)
+    init = graph.create_run_state("NVDA", TRADE_DATE)
+    reports = []
+    for _messages, state in graph.stream_run(init, **graph.propagator.get_graph_args()):
+        if state and state.get("market_report"):
+            reports.append(state["market_report"])
+    assert any("Report." in text for text in reports)

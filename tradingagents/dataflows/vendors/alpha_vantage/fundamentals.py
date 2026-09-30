@@ -1,6 +1,6 @@
 import json
 
-from tradingagents.dataflows.date_window import withhold_live_profile
+from tradingagents.dataflows.date_window import withhold_live_profile, withhold_undated_statements
 from tradingagents.dataflows.vendors.alpha_vantage.common import _make_api_request
 
 
@@ -55,20 +55,26 @@ def get_fundamentals(ticker: str, curr_date: str = None) -> str:
     return _make_api_request("OVERVIEW", params)
 
 
+def _statement(ticker: str, function: str, title: str, curr_date: str | None):
+    """One statement. A past run is withheld; a current run is still cut by period end."""
+    withheld = withhold_undated_statements(curr_date, ticker, title)
+    if withheld:
+        return withheld
+    result = _make_api_request(function, {"symbol": ticker})
+    return _filter_reports_by_date(result, curr_date)
+
+
 def get_balance_sheet(ticker: str, freq: str = "quarterly", curr_date: str = None):
     """Retrieve balance sheet data for a given ticker symbol using Alpha Vantage."""
-    result = _make_api_request("BALANCE_SHEET", {"symbol": ticker})
-    return _filter_reports_by_date(result, curr_date)
+    return _statement(ticker, "BALANCE_SHEET", "Balance Sheet", curr_date)
 
 
 def get_cashflow(ticker: str, freq: str = "quarterly", curr_date: str = None):
     """Retrieve cash flow statement data for a given ticker symbol using Alpha Vantage."""
-    result = _make_api_request("CASH_FLOW", {"symbol": ticker})
-    return _filter_reports_by_date(result, curr_date)
+    return _statement(ticker, "CASH_FLOW", "Cash Flow", curr_date)
 
 
 def get_income_statement(ticker: str, freq: str = "quarterly", curr_date: str = None):
     """Retrieve income statement data for a given ticker symbol using Alpha Vantage."""
-    result = _make_api_request("INCOME_STATEMENT", {"symbol": ticker})
-    return _filter_reports_by_date(result, curr_date)
+    return _statement(ticker, "INCOME_STATEMENT", "Income Statement", curr_date)
 

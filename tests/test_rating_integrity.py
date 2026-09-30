@@ -143,6 +143,10 @@ def test_the_cli_says_when_a_run_produced_no_usable_rating(monkeypatch, tmp_path
         def stream(self, *a, **k):
             yield {"messages": [], "final_trade_decision": REFUSAL}
 
+        def stream_run(self, *a, **k):
+            for chunk in self.stream(*a, **k):
+                yield chunk.get("messages", []), chunk
+
     fake = _Graph()
     fake.graph = fake
     fake.propagator = fake

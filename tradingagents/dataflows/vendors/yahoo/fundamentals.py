@@ -3,7 +3,11 @@ from typing import Annotated
 import pandas as pd
 import yfinance as yf
 
-from tradingagents.dataflows.date_window import withhold_live_profile
+from tradingagents.dataflows.date_window import (
+    withhold_live_profile,
+    withhold_undated_statements,
+    withhold_undisclosed_trades,
+)
 from tradingagents.dataflows.errors import NoMarketDataError, VendorError, VendorRateLimitError
 from tradingagents.dataflows.net import vendor_reachable
 from tradingagents.dataflows.symbols import normalize_symbol
@@ -101,8 +105,16 @@ _PERIOD_END_VINTAGE = (
 
 
 def _statement(ticker, freq, curr_date, title, quarterly_attr, annual_attr) -> str:
-    """One financial statement as CSV, cut at ``curr_date`` by period end."""
+    """One financial statement as CSV, cut at ``curr_date`` by period end.
+
+    A past run gets a notice instead: this vendor has no filing date, so a
+    period that has ended may not have been public yet. A run dated today
+    still receives the statement.
+    """
     canonical = normalize_symbol(ticker)
+    withheld = withhold_undated_statements(curr_date, canonical, title)
+    if withheld:
+        return withheld
     what = title.lower()
     try:
         ticker_obj = yf.Ticker(canonical)
@@ -159,8 +171,15 @@ def get_insider_transactions(
     ticker: Annotated[str, "ticker symbol of the company"],
     curr_date: Annotated[str | None, "only transactions on or before this date, yyyy-mm-dd"] = None,
 ):
-    """Get insider transactions data from yfinance."""
+    """Get insider transactions data from yfinance.
+
+    A past run gets a notice instead: rows are dated by the trade, and this
+    vendor reports no filing date. A run dated today still receives them.
+    """
     canonical = normalize_symbol(ticker)
+    withheld = withhold_undisclosed_trades(curr_date, canonical)
+    if withheld:
+        return withheld
     try:
         ticker_obj = yf.Ticker(canonical)
         data = yf_retry(lambda: ticker_obj.insider_transactions)

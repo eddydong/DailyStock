@@ -15,6 +15,8 @@ _ENV_OVERRIDES = {
     "TRADINGAGENTS_OUTPUT_LANGUAGE":      "output_language",
     "TRADINGAGENTS_MAX_DEBATE_ROUNDS":    "max_debate_rounds",
     "TRADINGAGENTS_MAX_RISK_ROUNDS":      "max_risk_discuss_rounds",
+    "TRADINGAGENTS_MAX_TOOL_ROUNDS":      "max_tool_rounds",
+    "TRADINGAGENTS_ANALYST_CONCURRENCY":  "analyst_concurrency",
     "TRADINGAGENTS_CHECKPOINT_ENABLED":   "checkpoint_enabled",
     "TRADINGAGENTS_BENCHMARK_TICKER":     "benchmark_ticker",
     "TRADINGAGENTS_TEMPERATURE":          "temperature",
@@ -114,6 +116,16 @@ DEFAULT_CONFIG = _apply_env_overrides({
     # Debate and discussion settings
     "max_debate_rounds": 1,
     "max_risk_discuss_rounds": 1,
+    # Tool calls one analyst may make before it is told to write its report.
+    # Two graph steps per round, plus the opening turn and the wrap-up, must
+    # stay under max_recur_limit or the run ends at the recursion limit instead.
+    "max_tool_rounds": 20,
+    # How many analysts fetch and call the model at once. Two is the width
+    # that fits the Cloud Run task (1 vCPU, 2 GiB, shared free-tier seconds)
+    # and still overlaps the slow model waits. One is fully serial. The
+    # daily job pins two; do not raise it there. Yahoo, Reddit, and the
+    # Hong Kong sources are also gated so a wave cannot burst one host.
+    "analyst_concurrency": 2,
     "max_recur_limit": 100,
     # News / data fetching parameters
     # Increase for longer lookback strategies or to broaden macro coverage;

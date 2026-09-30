@@ -35,6 +35,11 @@ def get_current_date() -> str:
     return date.today().strftime("%Y-%m-%d")
 
 
+def is_historical(run_date) -> bool:
+    """Whether a run is dated before today, so live-only data would come from after it."""
+    return bool(run_date) and str(run_date) < get_current_date()
+
+
 def coverage_gap(
     dates, start_date: str, end_date: str, source: str, subject: str
 ) -> str | None:
@@ -121,4 +126,43 @@ def withhold_live_profile(curr_date: str | None, label: str) -> str | None:
         f"Serving them would put post-decision information into a {curr_date} "
         f"analysis. Point-in-time fundamentals for {curr_date} are available "
         f"from the balance sheet, income statement, and cash flow tools."
+    )
+
+
+def withhold_undisclosed_trades(as_of_date: str | None, label: str) -> str | None:
+    """Notice to serve instead of insider trades with no filing date, or None to serve them.
+
+    A vendor that dates an insider trade by when it happened (Yahoo, Alpha
+    Vantage) cannot say when it became public: its Form 4 is filed up to two
+    business days later. A past run is told so rather than served trades that
+    may not yet have been disclosed. A run dated today still receives them.
+    """
+    if not is_historical(as_of_date):
+        return None
+    return (
+        f"# Insider Transactions for {label}\n"
+        f"# Point-in-time as of: {as_of_date}\n\n"
+        f"Insider transactions are withheld for this date. This vendor dates a trade "
+        f"by when it happened and reports no filing date, so it cannot show which "
+        f"trades were public on {as_of_date}."
+    )
+
+
+def withhold_undated_statements(as_of_date: str | None, label: str, title: str) -> str | None:
+    """Notice to serve instead of a statement with no filing date, or None to serve it.
+
+    A vendor that dates a statement by the period it covers (Yahoo, Alpha
+    Vantage) cannot say when its figures became public: a company files weeks
+    after the period ends, so a run dated in that gap would read figures that
+    were not yet known. A past run is told so. A run dated today still receives
+    the statements. SEC EDGAR, which dates every filing, is unchanged.
+    """
+    if not is_historical(as_of_date):
+        return None
+    return (
+        f"# {title} for {label}\n"
+        f"# Point-in-time as of: {as_of_date}\n\n"
+        f"{title} data is withheld for this date. This vendor dates a statement by "
+        f"the period it covers and reports no filing date, so it cannot show which "
+        f"figures were public on {as_of_date}. SEC EDGAR serves US filers as filed."
     )

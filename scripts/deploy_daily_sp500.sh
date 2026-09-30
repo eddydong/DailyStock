@@ -3,6 +3,8 @@
 # Each job is 1 vCPU and 2 GiB. They do not run at the same time:
 # Hong Kong fires at 08:15 Asia/Hong_Kong, the US job at 08:15 America/New_York.
 # Do not add a larger machine or a region outside the US free-tier pricing.
+# Analyst waves stay at 2 inside the job (see job_config). Raising that, or
+# this machine, is what spends the shared free allowance and trips vendor 429s.
 # Cloud Run jobs bill for the whole run, and this billing account's free
 # allowance is 240,000 vCPU-seconds and 450,000 GiB-seconds a month, shared
 # with dipalerts-research. At 1 vCPU and 2 GiB, keep each job under 6000

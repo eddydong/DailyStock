@@ -18,6 +18,7 @@ from rich.text import Text
 from tradingagents.graph.analyst_execution import (
     ANALYST_NODE_SPECS,
     AnalystExecutionPlan,
+    current_wave,
 )
 
 console = Console()
@@ -463,47 +464,43 @@ ANALYST_REPORT_MAP = {
 
 
 def update_analyst_statuses(message_buffer, chunk, wall_time_tracker=None):
-    """Update analyst statuses based on accumulated report state.
+    """Update analyst statuses from the reports filed so far.
 
-    Logic:
-    - Store new report content from the current chunk if present
-    - Check accumulated report_sections (not just current chunk) for status
-    - Analysts with reports = completed
-    - First analyst without report = in_progress
-    - Remaining analysts without reports = pending
-    - When all analysts done, set Bull Researcher to in_progress
+    Analysts run in waves. The current wave is in progress until each of its
+    reports lands; later waves stay pending. When every selected analyst has
+    filed, the research debate is in progress.
     """
     selected = message_buffer.selected_analysts
-    found_active = False
-
     if wall_time_tracker is not None:
         sync_analyst_tracker_from_chunk(wall_time_tracker, chunk)
+        plan = wall_time_tracker.plan
+    else:
+        plan = None
 
+    filed = []
     for analyst_key in ANALYST_ORDER:
         if analyst_key not in selected:
             continue
-
         agent_name = ANALYST_AGENT_NAMES[analyst_key]
         report_key = ANALYST_REPORT_MAP[analyst_key]
-
-        # Capture new report content from current chunk
         if chunk.get(report_key):
             message_buffer.update_report_section(report_key, chunk[report_key])
-
-        # Determine status from accumulated sections, not just current chunk
-        has_report = bool(message_buffer.report_sections.get(report_key))
-
-        if has_report:
+        if message_buffer.report_sections.get(report_key):
             message_buffer.update_agent_status(agent_name, "completed")
-        elif not found_active:
-            message_buffer.update_agent_status(agent_name, "in_progress")
-            found_active = True
-        else:
-            message_buffer.update_agent_status(agent_name, "pending")
+            filed.append(analyst_key)
 
-    # When all analysts complete, transition research team to in_progress
+    running = set()
+    if plan is not None:
+        running = {spec.key for spec in current_wave(plan.specs, plan.concurrency, set(filed))}
+    for analyst_key in ANALYST_ORDER:
+        if analyst_key not in selected or analyst_key in filed:
+            continue
+        agent_name = ANALYST_AGENT_NAMES[analyst_key]
+        status = "in_progress" if analyst_key in running or plan is None else "pending"
+        message_buffer.update_agent_status(agent_name, status)
+
     if (
-        not found_active
+        len(filed) == len(selected)
         and selected
         and message_buffer.agent_status.get("Bull Researcher") == "pending"
     ):
@@ -624,17 +621,14 @@ def sync_analyst_tracker_from_chunk(
     chunk: dict[str, str],
     now: float | None = None,
 ) -> None:
+    """Start the clock for the wave that is running. Each analyst stops when its report lands."""
     current_time = monotonic() if now is None else now
-    active_found = False
-
+    done = set(tracker._wall_times)
     for spec in tracker.plan.specs:
-        has_report = bool(chunk.get(spec.report_key))
-
-        if has_report:
+        if chunk.get(spec.report_key):
             tracker.mark_started(spec.key, started_at=current_time)
             tracker.mark_completed(spec.key, completed_at=current_time)
-            continue
-
-        if not active_found:
+            done.add(spec.key)
+    for spec in current_wave(tracker.plan.specs, tracker.plan.concurrency, done):
+        if spec.key not in done:
             tracker.mark_started(spec.key, started_at=current_time)
-            active_found = True
