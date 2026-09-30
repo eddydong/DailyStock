@@ -207,6 +207,16 @@ a { color: inherit; }
 }
 .board .rank { color: #8ea096; }
 .board button.is-on .rank, .board button.is-on .chip { color: var(--ink); }
+.board .mkt {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8ea096;
+  align-self: center;
+  margin: 0 0.15rem 0 0.85rem;
+}
+.board .mkt:first-child { margin-left: 0; }
 .desk[hidden] { display: none !important; }
 .desk-head {
   display: flex;
@@ -261,6 +271,38 @@ _RATING_ON_DARK = {
     "REVIEW": "#c5d0da",
 }
 
+# Short name on the Hong Kong buttons. Full legal name in the report title.
+_HK_NAMES = {
+    "0700.HK": ("Tencent", "Tencent Holdings Limited"),
+    "9988.HK": ("Alibaba", "Alibaba Group Holding Limited"),
+    "6869.HK": ("YOFC", "Yangtze Optical Fibre and Cable Joint Stock Limited Company"),
+    "1810.HK": ("Xiaomi", "Xiaomi Corporation"),
+    "9926.HK": ("Akeso", "Akeso, Inc."),
+}
+
+
+def _bar_label(ticker: str) -> str:
+    """The selection-bar word. Hong Kong uses the short company name."""
+    pair = _HK_NAMES.get(ticker)
+    return pair[0] if pair else ticker
+
+
+def _title_label(ticker: str) -> str:
+    """The report title. Hong Kong is the full company name plus the code."""
+    pair = _HK_NAMES.get(ticker)
+    if pair:
+        return f"{pair[1]} ({ticker})"
+    return ticker
+
+
+def _market_groups(names: list[str]) -> list[tuple[str, list[str]]]:
+    """Hong Kong names, then US names, keeping the order inside each market."""
+    buckets = {"HK": [], "US": []}
+    for name in names:
+        buckets["HK" if name.endswith(".HK") else "US"].append(name)
+    return [(market, tickers) for market, tickers in buckets.items() if tickers]
+
+
 _SECTIONS = (
     ("Decision", "final_decision"),
     ("Market", "market_report"),
@@ -294,7 +336,7 @@ def render_page(days: list[dict], tickers: tuple[str, ...] | None = None) -> str
         latest = ordered[-1]
         prior = list(reversed(ordered[:-1]))
         ticker = latest.get("ticker") or ""
-        title = f"{ticker} · {latest.get('trade_date') or ''}"
+        title = f"{_title_label(ticker)} · {latest.get('trade_date') or ''}"
         body = _layout(latest, prior)
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -474,34 +516,38 @@ def _board(days: list[dict], names: list[str]) -> str:
     grouped: dict[str, list[dict]] = {}
     for row in days:
         grouped.setdefault(row.get("ticker") or "", []).append(row)
-    selected = "AAPL" if "AAPL" in names else names[0]
+    groups = _market_groups(names)
+    selected = groups[0][1][0]
     latest_date = max((row.get("trade_date") or "" for row in days), default="")
     buttons = []
     desks = []
-    for index, name in enumerate(names, start=1):
-        series = sorted(grouped.get(name, []), key=lambda row: row.get("trade_date") or "")
-        on = name == selected
-        klass = ' class="is-on"' if on else ""
-        rating = (series[-1].get("rating") if series else None) or "—"
-        buttons.append(
-            f'<button type="button"{klass} data-ticker="{html.escape(name)}" aria-pressed="{"true" if on else "false"}">'
-            f'<span class="rank">{index:02d}</span>'
-            f'<span class="sym">{html.escape(name)}</span>'
-            f'<span class="chip">{html.escape(rating)}</span>'
-            "</button>"
-        )
-        hidden = "" if on else " hidden"
-        if series:
-            body = _layout(series[-1], list(reversed(series[:-1])), prefix=name.lower(), heading=True)
-        else:
-            body = (
-                '<div class="layout"><nav class="toc" aria-label="Contents"><p>Contents</p></nav>'
-                '<main class="reading">'
-                f'<div class="desk-head"><p class="name">{html.escape(name)}</p></div>'
-                f"<p class=\"summary\">No session has been recorded for {html.escape(name)}.</p>"
-                "</main></div>"
+    for market, members in groups:
+        buttons.append(f'<span class="mkt">{html.escape(market)}</span>')
+        for index, name in enumerate(members, start=1):
+            series = sorted(grouped.get(name, []), key=lambda row: row.get("trade_date") or "")
+            on = name == selected
+            klass = ' class="is-on"' if on else ""
+            rating = (series[-1].get("rating") if series else None) or "—"
+            title = _title_label(name)
+            buttons.append(
+                f'<button type="button"{klass} data-ticker="{html.escape(name)}" aria-pressed="{"true" if on else "false"}">'
+                f'<span class="rank">{index:02d}</span>'
+                f'<span class="sym">{html.escape(_bar_label(name))}</span>'
+                f'<span class="chip">{html.escape(rating)}</span>'
+                "</button>"
             )
-        desks.append(f'<div class="desk" data-ticker="{html.escape(name)}"{hidden}>{body}</div>')
+            hidden = "" if on else " hidden"
+            if series:
+                body = _layout(series[-1], list(reversed(series[:-1])), prefix=name.lower(), heading=True)
+            else:
+                body = (
+                    '<div class="layout"><nav class="toc" aria-label="Contents"><p>Contents</p></nav>'
+                    '<main class="reading">'
+                    f'<div class="desk-head"><p class="name">{html.escape(title)}</p></div>'
+                    f"<p class=\"summary\">No session has been recorded for {html.escape(title)}.</p>"
+                    "</main></div>"
+                )
+            desks.append(f'<div class="desk" data-ticker="{html.escape(name)}"{hidden}>{body}</div>')
     return f"""
 <header class="mast">
   <div>
@@ -541,14 +587,14 @@ def _layout(day: dict, prior: list[dict], prefix: str = "", heading: bool = Fals
         mast = ""
         desk_head = f"""
     <div class="desk-head">
-      <p class="name">{html.escape(day.get("ticker") or "")}</p>
+      <p class="name">{html.escape(_title_label(day.get("ticker") or ""))}</p>
       <p class="stamp" style="background:{color}">{html.escape(rating)}</p>
     </div>"""
     else:
         mast = f"""
 <header class="mast">
   <div>
-    <p class="ticker">{html.escape(day.get("ticker") or "")}</p>
+    <p class="ticker">{html.escape(_title_label(day.get("ticker") or ""))}</p>
     <p class="kicker">Session {html.escape(day.get("trade_date") or "")}</p>
   </div>
   <p class="stamp" style="background:{color}">{html.escape(rating)}</p>

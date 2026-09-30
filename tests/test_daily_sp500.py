@@ -237,12 +237,39 @@ def test_board_lists_every_name_and_keeps_each_report():
     assert "OLD AAPL MARKET" not in html
     assert "Old apple." in html
     assert "No session has been recorded for MU." in html
-    assert 'data-ticker="NVDA" hidden' in html
+    assert 'data-ticker="AAPL" hidden' in html
     assert '<span class="rank">01</span><span class="sym">NVDA</span>' in html
     assert '<span class="rank">02</span><span class="sym">AAPL</span>' in html
     assert 'aria-pressed="true"' in html
     assert 'id="aapl-market"' in html
     assert 'id="nvda-market"' in html
+
+
+def test_board_groups_markets_and_uses_hong_kong_names():
+    html = render_page([
+        {
+            "trade_date": "2026-09-30",
+            "ticker": "0700.HK",
+            "rating": "Underweight",
+            "summary": "Tencent note.",
+            "market_report": "TENCENT MARKET",
+        },
+        {
+            "trade_date": "2026-09-29",
+            "ticker": "NVDA",
+            "rating": "Hold",
+            "summary": "Nvidia note.",
+            "market_report": "NVDA MARKET",
+        },
+    ], tickers=("0700.HK", "9988.HK", "NVDA"))
+    assert '<span class="mkt">HK</span>' in html
+    assert '<span class="mkt">US</span>' in html
+    assert html.index("HK") < html.index(">Tencent<") < html.index(">US<") < html.index(">NVDA<")
+    assert '<span class="sym">Tencent</span>' in html
+    assert '<span class="sym">Alibaba</span>' in html
+    assert "Tencent Holdings Limited (0700.HK)" in html
+    assert "Alibaba Group Holding Limited (9988.HK)" in html
+    assert "TENCENT MARKET" in html
 
 
 def test_publish_url_puts_the_page_with_its_bearer(monkeypatch):
